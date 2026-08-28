@@ -12,6 +12,8 @@ anyhow = "1.0"
 thiserror = "1.0"
 fs2 = "0.4"  # file locking for concurrent access
 dirs = "5.0"  # cross-platform home directory
+chrono = { version = "0.4", features = ["serde"] }
+twox-hash = "2.0"  # stable hashing for schema versioning
 
 [profile.release]
 strip = true

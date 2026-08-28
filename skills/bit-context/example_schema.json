@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "bits": {
+    "0": {"name": "user_authenticated", "desc": "사용자 인증 완료"},
+    "1": {"name": "has_permission", "desc": "필요 권한 보유"},
+    "2": {"name": "resource_exists", "desc": "대상 리소스 존재"},
+    "3": {"name": "quota_ok", "desc": "쿼터 초과 안 함"},
+    "4": {"name": "rate_limit_ok", "desc": "레이트리밋 여유"}
+  },
+  "masks": {
+    "required": {"bits": [0, 1, 3], "desc": "기본 실행 필수 조건"},
+    "admin_only": {"bits": [0, 1], "desc": "관리자 전용"},
+    "read_access": {"bits": [0, 2], "desc": "읽기 권한"}
+  }
+}

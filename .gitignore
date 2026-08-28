@@ -1,0 +1,12 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock
+
+# bitctx sessions
+~/.bitctx/
+
+# IDE
+.idea/
+.vscode/
+*.swp

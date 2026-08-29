@@ -1,6 +1,6 @@
 use crate::models::Schema;
-use crate::storage::{load_schema, load_or_create_session, save_session, schema_hash};
-use anyhow::{Context, Result};
+use crate::storage::Store;
+use anyhow::Result;
 use clap::Args;
 
 #[derive(Args, Debug)]
@@ -11,7 +11,10 @@ pub struct SetArgs {
     #[arg(long, help = "Bit name or index (comma-separated for multiple)")]
     bit: String,
 
-    #[arg(long, help = "Value(s): true/false or 1/0 (comma-separated for multiple)")]
+    #[arg(
+        long,
+        help = "Value(s): true/false or 1/0 (comma-separated for multiple)"
+    )]
     value: String,
 }
 
@@ -22,10 +25,10 @@ fn parse_indices(schema: &Schema, bits_str: &str) -> Result<Vec<u8>> {
     for part in parts {
         if let Ok(idx) = part.parse::<u8>() {
             if idx > 63 {
-                anyhow::bail!("bit index out of range (0-63): {}", idx);
+                anyhow::bail!("bit index out of range (0-63): {idx}");
             }
             if !schema.bits.contains_key(&idx) {
-                anyhow::bail!("bit index {} not defined in schema", idx);
+                anyhow::bail!("bit index {idx} not defined in schema");
             }
             indices.push(idx);
         } else {
@@ -39,7 +42,7 @@ fn parse_indices(schema: &Schema, bits_str: &str) -> Result<Vec<u8>> {
 fn parse_values(values_str: &str, expected_len: usize) -> Result<Vec<bool>> {
     let parts: Vec<&str> = values_str.split(',').map(|s| s.trim()).collect();
     if parts.len() != expected_len {
-        anyhow::bail!("expected {} values, got {}", expected_len, parts.len());
+        anyhow::bail!("expected {expected_len} values, got {}", parts.len());
     }
 
     let mut values = Vec::with_capacity(parts.len());
@@ -47,27 +50,28 @@ fn parse_values(values_str: &str, expected_len: usize) -> Result<Vec<bool>> {
         let val = match part.to_lowercase().as_str() {
             "true" | "1" | "yes" | "on" => true,
             "false" | "0" | "no" | "off" => false,
-            _ => anyhow::bail!("invalid value '{}': use true/false or 1/0", part),
+            _ => anyhow::bail!("invalid value '{part}': use true/false or 1/0"),
         };
         values.push(val);
     }
     Ok(values)
 }
 
-pub fn run(args: SetArgs) -> Result<()> {
-    let schema = load_schema(&args.session).context("failed to load schema")?;
-    let hash = schema_hash(&schema);
-    let mut session = load_or_create_session(&args.session, &hash).context("failed to load or create session")?;
+pub fn run(store: &Store, args: SetArgs) -> Result<()> {
+    let updates = store.update_session(&args.session, |schema, session| {
+        let indices = parse_indices(schema, &args.bit)?;
+        let values = parse_values(&args.value, indices.len())?;
+        session.set_bits(&indices, &values);
 
-    let indices = parse_indices(&schema, &args.bit)?;
-    let values = parse_values(&args.value, indices.len())?;
+        Ok(indices
+            .into_iter()
+            .zip(values)
+            .map(|(index, value)| (index, schema.bits[&index].name.clone(), value))
+            .collect::<Vec<_>>())
+    })?;
 
-    session.set_bits(&indices, &values);
-    save_session(&session).context("failed to save session")?;
-
-    for (idx, val) in indices.iter().zip(values.iter()) {
-        let name = schema.bits[idx].name.clone();
-        println!("Set bit {} ({}) = {}", idx, name, val);
+    for (index, name, value) in updates {
+        println!("Set bit {index} ({name}) = {value}");
     }
 
     Ok(())

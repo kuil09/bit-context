@@ -1,6 +1,6 @@
-use crate::models::Schema;
-use crate::storage::{load_schema, load_session, schema_hash};
-use anyhow::{Context, Result};
+use crate::models::MissingCondition;
+use crate::storage::Store;
+use anyhow::Result;
 use clap::Args;
 use serde::Serialize;
 
@@ -21,36 +21,40 @@ pub struct EvalResult {
     pub pass: bool,
     pub missing: Vec<u8>,
     pub missing_labels: Vec<String>,
+    pub missing_conditions: Vec<MissingCondition>,
 }
 
-pub fn run(args: EvalArgs) -> Result<()> {
-    let schema = load_schema(&args.session).context("failed to load schema")?;
-    let hash = schema_hash(&schema);
-    let session = load_session(&args.session, &hash).context("failed to load session")?;
-
-    let mask_bits = schema.mask_bits(&args.mask).context("invalid mask")?;
-    let (pass, missing_bits) = session.eval_mask(mask_bits);
-    let missing_labels = schema.missing_labels(&args.mask, session.bits)?;
-
-    let missing_indices: Vec<u8> = (0..64).filter(|&i| missing_bits & (1u64 << i) != 0).collect();
+pub fn run(store: &Store, args: EvalArgs) -> Result<()> {
+    let (schema, session) = store.read_session(&args.session)?;
+    let missing_conditions = schema.missing_conditions(&args.mask, session.bits)?;
 
     let result = EvalResult {
-        pass,
-        missing: missing_indices,
-        missing_labels,
+        pass: missing_conditions.is_empty(),
+        missing: missing_conditions
+            .iter()
+            .map(|condition| condition.index)
+            .collect(),
+        missing_labels: missing_conditions
+            .iter()
+            .map(|condition| condition.name.clone())
+            .collect(),
+        missing_conditions,
     };
 
     match args.format.as_str() {
         "json" => {
-            println!("{}", serde_json::to_string(&result).unwrap());
+            println!("{}", serde_json::to_string(&result)?);
         }
         "text" => {
-            if pass {
+            if result.pass {
                 println!("PASS: all conditions satisfied");
             } else {
                 println!("FAIL: missing conditions:");
-                for (idx, label) in result.missing.iter().zip(result.missing_labels.iter()) {
-                    println!("  - bit {}: {}", idx, label);
+                for condition in &result.missing_conditions {
+                    println!(
+                        "  - bit {}: {} ({})",
+                        condition.index, condition.name, condition.desc
+                    );
                 }
             }
         }

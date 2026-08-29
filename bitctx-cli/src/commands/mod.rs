@@ -1,6 +1,6 @@
-pub mod init;
-pub mod set;
+pub mod dump;
 pub mod eval;
 pub mod explain;
-pub mod dump;
+pub mod init;
 pub mod reset;
+pub mod set;

@@ -1,167 +1,170 @@
 # bit-context
 
-> **AI 하네스 스킬을 위한 비트 메모리 컨텍스트 저장소** — 장황한 LLM 추론을 결정적 비트 연산으로 대체합니다.
+`bitctx`는 검증된 불리언 조건을 비트로 저장하고 이름 있는 AND 마스크를 결정적으로 평가하는 작은 Rust CLI입니다. 하네스가 각 조건을 확인하는 방법을 이미 알고 있고, 작고 지속적인 게이트 상태가 필요할 때 사용합니다.
 
-## 해결하려는 문제
+[English documentation](README.md)
 
-AI 하네스는 종종 LLM에게 수십 개의 불리언 조건을 평가하게 합니다:
-- "사용자 인증됐는지, 권한 있는지, 쿼터 괜찮은지, 레이트리밋 괜찮은지, 리소스 존재하는지..."
-- LLM이 모든 조건을 읽고, 각각 툴 호출하고, AND/OR 논리 추론
-- **느림(초 단위), 비쌈(토큰), 비결정적(환각 위험)**
+## 경계
 
-## 해결책
+`bitctx`는 사용자를 인증하거나, 사실을 발견하거나, 정책을 판단하거나, 권한을 부여하지 않습니다. 마스크 통과는 해당 세션에 저장된 값이 선택한 스키마 마스크를 충족한다는 뜻뿐입니다. 신뢰할 수 있는 조건값을 확보하고 외부 권한·정책 조건을 집행하는 책임은 호출자에게 있습니다.
 
-**bitctx**가 조건 평가를 LLM 밖으로 꺼냅니다:
+상태는 평문 JSON으로 저장됩니다. 세션 ID, 비트 이름, 설명, 상태에 비밀을 넣지 마십시오.
 
-```
-┌─────────────┐     결정적      ┌──────────────┐     최소      ┌─────┐
-│  Harness    │ ──── boolean ───► │   bitctx     │ ─── pass/fail ─► │ LLM │
-│  (Python)   │   체크 (코드)     │  (비트 연산) │   + 실패 비트   │     │
-└─────────────┘                   └──────────────┘                 └─────┘
-        │                                   │                            │
-        │  check_auth()                     │  0b1011 & 0b1111           │  "승인"
-        │  check_rbac()                     │  = 0b1011 (통과)           │
-        │  check_quota()                    │                            │
-        ▼                                   ▼                            ▼
-   코드가 각 조건                      비트 AND 연산                  사람용
-   개별 판정                           O(1) 평가                      텍스트 생성
+## 설치
+
+릴리스 지원 플랫폼은 x86-64와 ARM64 기반 Linux 및 macOS입니다. v0.2.0은 Windows를 지원하지 않습니다.
+
+최신 릴리스 자산을 필수 체크섬 검증과 함께 설치합니다.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kuil09/bit-context/main/install.sh | bash
 ```
 
-**결과**: 80%+ 토큰 절감, 50배 지연시간 개선, 결정적 의사결정.
+`/usr/local/bin` 이외의 위치에는 `INSTALL_DIR`을 지정하십시오. 체크섬 파일, 체크섬 도구, 자산 또는 다운로드를 사용할 수 없으면 설치기는 중단됩니다.
 
----
+Rust 1.85 이상에서 소스로 빌드할 수도 있습니다.
 
-## 아키텍처
-
-| 구성요소 | 역할 |
-|----------|------|
-| **bitctx CLI** | 러스트 바이너리: 비트 메모리 + 마스크 평가 + 자연어 디코딩 |
-| **스키마** | JSON: 비트 인덱스 ↔ 이름/설명, 네임드 마스크 (AND 조합) |
-| **저장소** | `~/.bitctx/<session>.json` (파일 기반, 원자적 쓰기, 파일 락) |
-| **스킬 래퍼** | `skills/bit-context/bitctx_skill.sh` 하네스 통합용 |
-
----
+```bash
+cd bitctx-cli
+cargo build --release --locked
+install target/release/bitctx /usr/local/bin/bitctx
+```
 
 ## 빠른 시작
 
-```bash
-# 빌드
-cd bitctx-cli && cargo build --release
+스키마를 만듭니다.
 
-# 스키마 정의 (schema.json)
+```json
 {
   "version": 1,
   "bits": {
-    "0": {"name": "user_authenticated", "desc": "사용자 인증 완료"},
-    "1": {"name": "has_permission", "desc": "필요 권한 보유"},
-    "2": {"name": "quota_ok", "desc": "쿼터 초과 안 함"}
+    "0": {"name": "user_authenticated", "desc": "인증 확인 완료"},
+    "1": {"name": "has_permission", "desc": "필수 권한 확인 완료"},
+    "2": {"name": "quota_ok", "desc": "쿼터 확인 통과"}
   },
   "masks": {
-    "required": {"bits": [0, 1, 2], "desc": "필수 조건 모두"}
+    "required": {"bits": [0, 1, 2], "desc": "모든 필수 조건"}
   }
 }
+```
 
-# 세션 초기화
+명시적 세션을 초기화하고 평가합니다.
+
+```bash
 bitctx init --session deploy-123 --schema schema.json
 
-# 하네스가 조건 확인 후 비트 설정
-bitctx set --session deploy-123 --bit user_authenticated,has_permission --value true,true
-
-# 즉시 비트 연산 평가
+# 새 v0.2 세션은 모든 비트가 0이며 즉시 평가할 수 있습니다.
 bitctx eval --session deploy-123 --mask required --format json
-# {"pass":false,"missing":[2],"missing_labels":["quota_ok"]}
 
-# 자연어 설명 (실패 시에만)
-bitctx explain --session deploy-123 --mask required --lang ko
-# "다음 조건이 충족되지 않았습니다: quota_ok"
+# 실제 검사에서 얻은 값만 설정합니다.
+bitctx set --session deploy-123 \
+  --bit user_authenticated,has_permission,quota_ok \
+  --value true,true,false
+
+bitctx eval --session deploy-123 --mask required --format json
 ```
 
----
+실패 출력은 마스크 정의 순서를 유지하며 호환 필드와 구조화된 상세 정보를 함께 제공합니다.
 
-## 하네스 통합 (Python)
-
-```python
-import subprocess, json, os
-
-os.environ["BITCTX_SESSION"] = "task-123"
-BITCTX = "/usr/local/bin/bitctx"
-
-def bitctx_init(schema_path):
-    subprocess.run([BITCTX, "init", "--session", "task-123", "--schema", schema_path], check=True)
-
-def bitctx_set(bits: dict):
-    names = ",".join(bits.keys())
-    vals = ",".join("true" if v else "false" for v in bits.values())
-    subprocess.run([BITCTX, "set", "--session", "task-123", "--bit", names, "--value", vals], check=True)
-
-def bitctx_eval(mask: str) -> dict:
-    result = subprocess.run([BITCTX, "eval", "--session", "task-123", "--mask", mask, "--format", "json"],
-                           capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
-
-def bitctx_explain(mask: str) -> str:
-    result = subprocess.run([BITCTX, "explain", "--session", "task-123", "--mask", mask, "--lang", "ko"],
-                           capture_output=True, text=True, check=True)
-    return result.stdout.strip()
-
-# 사용 예시
-bitctx_init("schema.json")
-bitctx_set({"user_authenticated": True, "has_permission": True, "quota_ok": False})
-
-result = bitctx_eval("required")
-if result["pass"]:
-    prompt = "배포 승인됨."
-else:
-    prompt = f"배포 거부됨: {bitctx_explain('required')}"
+```json
+{
+  "pass": false,
+  "missing": [2],
+  "missing_labels": ["quota_ok"],
+  "missing_conditions": [
+    {"index": 2, "name": "quota_ok", "desc": "쿼터 확인 통과"}
+  ]
+}
 ```
 
----
+## 명령
 
-## 성능 비교
-
-| 지표 | bitctx 미사용 | bitctx 사용 |
-|------|---------------|-------------|
-| 프롬프트 토큰 | ~450 | ~40 |
-| LLM 툴 호출 | 12+ 개 | **0개** |
-| 지연시간 | 2-10초 | **0.2-0.5초** |
-| 결정적 | ❌ | **✅** |
-
-자세한 비교는 [bench_harness.sh](bench_harness.sh) 참고.
-
----
-
-## 프로젝트 구조
-
-```
-bit-mania/
-├── specs/
-│   └── goal-bitctx-cli.md       # 목표 및 요구사항 스펙
-├── bitctx-cli/                  # 러스트 CLI
-│   ├── src/
-│   │   ├── models/              # Schema, Session
-│   │   ├── storage/             # JSON I/O, 파일 락
-│   │   └── commands/            # init, set, eval, explain, dump, reset
-│   └── Cargo.toml
-├── skills/bit-context/          # 하네스 스킬 래퍼
-│   ├── bitctx_skill.sh
-│   ├── example_schema.json
-│   └── README.md
-├── bench_perf.sh                # 마이크로벤치마크
-├── bench_harness.sh             # 실제 하네스 비교
-└── README.md                    # English version
+```text
+bitctx [--data-dir PATH] init    --session ID --schema FILE [--force]
+bitctx [--data-dir PATH] set     --session ID --bit NAMES --value VALUES
+bitctx [--data-dir PATH] eval    --session ID --mask NAME [--format json|text]
+bitctx [--data-dir PATH] explain --session ID --mask NAME [--lang ko|en]
+bitctx [--data-dir PATH] dump    --session ID [--format json|text]
+bitctx [--data-dir PATH] reset   --session ID [--force]
 ```
 
----
+데이터 디렉터리는 다음 우선순위로 선택됩니다.
 
-## 로드맵
+1. `--data-dir <PATH>`
+2. `BITCTX_DATA_DIR`
+3. `~/.bitctx`
 
-- [ ] v2: 데몬 모드 (Unix socket) - 서브밀리초 평가
-- [ ] v2: 라이브러리 임베딩 (Rust crate / Python 바인딩)
-- [ ] v2: 임의 비트 폭 지원 (bitvec)
-- [ ] 스키마 마이그레이션 도구
-- [ ] 비트 TTL/자동 만료
+세션 ID는 `[A-Za-z0-9][A-Za-z0-9._-]{0,127}`과 일치하는 단일 정상 경로 컴포넌트여야 합니다. 경로 구분자, 절대경로, `.`, `..`, 제어문자, 더 긴 ID는 거부됩니다.
 
----
+## 저장소와 동시성
+
+기본 저장 구조는 다음과 같습니다.
+
+```text
+~/.bitctx/
+├── .locks/
+│   └── deploy-123.lock
+└── deploy-123/
+    ├── schema.json
+    └── session.json
+```
+
+- `init`, `set`, `reset`은 세션별 배타 잠금을 사용합니다.
+- `eval`, `explain`, `dump`는 세션별 공유 잠금을 사용합니다.
+- 잠금 파일은 삭제 가능한 세션 디렉터리 밖에 있습니다.
+- 다른 프로세스가 같은 세션 ID를 참조할 때 잠금 inode가 바뀌는 경쟁을 막기 위해 `reset` 뒤에도 작은 잠금 파일이 남을 수 있습니다.
+- 상태 쓰기는 같은 디렉터리의 임시파일을 flush·sync한 뒤 원자적으로 rename합니다.
+- Unix에서 데이터 디렉터리는 `0700`, 상태와 잠금 파일은 `0600`을 사용합니다.
+- 초기화되지 않은 세션에서 `set`은 실패합니다.
+- `init --force`는 잠금을 유지한 채 스키마를 다시 저장하고 모든 비트를 0으로 초기화합니다.
+
+스키마 검증은 중복 JSON 인덱스, 중복 비트 이름, 잘못된 이름, 존재하지 않는 마스크 참조, 빈 마스크, 마스크 내부의 중복 비트를 거부합니다. 설명에는 Unicode를 사용할 수 있습니다.
+
+## v0.2 마이그레이션
+
+유효한 v0.1 `schema.json`과 `session.json`은 그대로 읽을 수 있으며 스키마 해시 알고리즘도 유지됩니다. 주요 동작 변경은 다음과 같습니다.
+
+- `init`이 두 파일과 0으로 초기화된 세션을 함께 만들어 직후 `eval`이 동작합니다.
+- 호환 래퍼는 더 이상 `BITCTX_SESSION=default`를 사용하지 않습니다. 세션을 명시해야 합니다.
+- `set`은 없는 세션을 만들지 않습니다.
+- 안전하지 않은 세션 ID는 거부됩니다.
+- `eval`은 `missing`과 `missing_labels`를 유지하면서 `missing_conditions`를 추가합니다.
+
+## Codex 스킬
+
+릴리스의 `bit-context-skill.zip`에는 `skills/bit-context/SKILL.md`, `agents/openai.yaml`, 호환 래퍼, 예제 스키마가 들어 있습니다. `bit-context` 디렉터리를 Codex 스킬 디렉터리에 풀고 스킬 발견을 다시 실행하십시오.
+
+스킬은 `bitctx` 설치 여부를 확인하지만 자동 설치하지 않습니다. 관찰된 근거가 있는 조건값만 설정하며, 마스크 통과를 외부 권한 승인으로 해석하지 않습니다.
+
+래퍼는 선택 사항입니다.
+
+```bash
+export BITCTX_SESSION=deploy-123
+skills/bit-context/bitctx_skill.sh eval required json
+```
+
+## 성능 근거
+
+`bench_perf.sh`는 실행한 머신의 로컬 CLI 프로세스 및 평가 시간을 측정합니다. `bench_harness.sh`의 토큰·모델 지연·비용 수치는 하네스 비교를 설명하기 위한 예시이며 로컬 CLI 측정값이나 보장값이 아닙니다.
+
+```bash
+BITCTX=bitctx ITERATIONS=100 ./bench_perf.sh
+```
+
+## 개발 검증
+
+```bash
+cd bitctx-cli
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test --locked
+
+cd ..
+bash tests/test_wrapper.sh
+shellcheck install.sh bench_perf.sh bench_harness.sh \
+  skills/bit-context/bitctx_skill.sh tests/test_installer.sh \
+  tests/smoke_release.sh tests/test_wrapper.sh
+```
 
 ## 라이선스
 

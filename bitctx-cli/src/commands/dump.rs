@@ -1,6 +1,5 @@
-use crate::models::Schema;
-use crate::storage::{load_schema, load_session, schema_hash};
-use anyhow::{Context, Result};
+use crate::storage::Store;
+use anyhow::Result;
 use clap::Args;
 use serde::Serialize;
 
@@ -31,10 +30,8 @@ pub struct BitState {
     pub desc: String,
 }
 
-pub fn run(args: DumpArgs) -> Result<()> {
-    let schema = load_schema(&args.session).context("failed to load schema")?;
-    let hash = schema_hash(&schema);
-    let session = load_session(&args.session, &hash).context("failed to load session")?;
+pub fn run(store: &Store, args: DumpArgs) -> Result<()> {
+    let (schema, session) = store.read_session(&args.session)?;
 
     let bit_states: Vec<BitState> = schema
         .all_bit_names()
@@ -61,7 +58,7 @@ pub fn run(args: DumpArgs) -> Result<()> {
 
     match args.format.as_str() {
         "json" => {
-            println!("{}", serde_json::to_string_pretty(&result).unwrap());
+            println!("{}", serde_json::to_string_pretty(&result)?);
         }
         "text" => {
             println!("Session: {}", result.session_id);
@@ -73,7 +70,10 @@ pub fn run(args: DumpArgs) -> Result<()> {
             println!("Bit States:");
             for bs in &result.bit_states {
                 let status = if bs.value { "●" } else { "○" };
-                println!("  {} bit {:2}: {:20} = {}  ({})", status, bs.index, bs.name, bs.value, bs.desc);
+                println!(
+                    "  {} bit {:2}: {:20} = {}  ({})",
+                    status, bs.index, bs.name, bs.value, bs.desc
+                );
             }
         }
         _ => anyhow::bail!("unknown format '{}': use json or text", args.format),

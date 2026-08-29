@@ -1,6 +1,5 @@
-use crate::models::Schema;
-use crate::storage::{load_schema, load_session, schema_hash};
-use anyhow::{Context, Result};
+use crate::storage::Store;
+use anyhow::Result;
 use clap::Args;
 
 #[derive(Args, Debug)]
@@ -15,15 +14,11 @@ pub struct ExplainArgs {
     lang: String,
 }
 
-pub fn run(args: ExplainArgs) -> Result<()> {
-    let schema = load_schema(&args.session).context("failed to load schema")?;
-    let hash = schema_hash(&schema);
-    let session = load_session(&args.session, &hash).context("failed to load session")?;
+pub fn run(store: &Store, args: ExplainArgs) -> Result<()> {
+    let (schema, session) = store.read_session(&args.session)?;
+    let missing_conditions = schema.missing_conditions(&args.mask, session.bits)?;
 
-    let mask_bits = schema.mask_bits(&args.mask).context("invalid mask")?;
-    let (pass, missing_bits) = session.eval_mask(mask_bits);
-
-    if pass {
+    if missing_conditions.is_empty() {
         match args.lang.as_str() {
             "ko" => println!("모든 조건이 충족되었습니다."),
             "en" => println!("All conditions satisfied."),
@@ -32,20 +27,22 @@ pub fn run(args: ExplainArgs) -> Result<()> {
         return Ok(());
     }
 
-    let missing_labels = schema.missing_labels(&args.mask, session.bits)?;
-    let mask = schema.masks.get(&args.mask).unwrap();
+    let mask = schema
+        .masks
+        .get(&args.mask)
+        .ok_or_else(|| anyhow::anyhow!("mask '{}' not found in schema", args.mask))?;
 
     match args.lang.as_str() {
         "ko" => {
             println!("다음 조건이 충족되지 않았습니다 ({})", mask.desc);
-            for label in missing_labels {
-                println!("  - {}", label);
+            for condition in &missing_conditions {
+                println!("  - {}: {}", condition.name, condition.desc);
             }
         }
         "en" => {
             println!("Conditions not satisfied ({})", mask.desc);
-            for label in missing_labels {
-                println!("  - {}", label);
+            for condition in &missing_conditions {
+                println!("  - {}: {}", condition.name, condition.desc);
             }
         }
         _ => anyhow::bail!("unknown language '{}': use ko or en", args.lang),

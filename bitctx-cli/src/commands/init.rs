@@ -1,5 +1,5 @@
 use crate::models::Schema;
-use crate::storage::{save_schema, schema_hash, session_dir};
+use crate::storage::Store;
 use anyhow::{Context, Result};
 use clap::Args;
 use std::fs;
@@ -17,29 +17,22 @@ pub struct InitArgs {
     force: bool,
 }
 
-pub fn run(args: InitArgs) -> Result<()> {
+pub fn run(store: &Store, args: InitArgs) -> Result<()> {
     let schema_path = Path::new(&args.schema);
     if !schema_path.exists() {
         anyhow::bail!("schema file not found: {}", schema_path.display());
     }
 
     let schema_content = fs::read_to_string(schema_path).context("failed to read schema file")?;
-    let mut schema: Schema = serde_json::from_str(&schema_content).context("invalid schema JSON")?;
+    let schema: Schema = serde_json::from_str(&schema_content).context("invalid schema JSON")?;
     schema.validate().context("schema validation failed")?;
+    let session = store
+        .initialize(&args.session, &schema, args.force)
+        .context("failed to initialize session")?;
 
-    let dir = session_dir(&args.session);
-    if dir.exists() && !args.force {
-        anyhow::bail!(
-            "session '{}' already exists. Use --force to overwrite",
-            args.session
-        );
-    }
-
-    fs::create_dir_all(&dir).context("failed to create session directory")?;
-
-    let hash = schema_hash(&schema);
-    save_schema(&args.session, &schema).context("failed to save schema")?;
-
-    println!("Initialized session '{}' with schema hash {}", args.session, hash);
+    println!(
+        "Initialized session '{}' with schema hash {}",
+        args.session, session.schema_hash
+    );
     Ok(())
 }

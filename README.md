@@ -1,167 +1,172 @@
 # bit-context
 
-> **Bit-memory context store for AI harness skills** — Replace verbose LLM reasoning with deterministic bitwise operations.
+`bitctx` is a small Rust CLI that stores verified boolean conditions as bits and evaluates named AND masks deterministically. It is useful when a harness already knows how to check each condition and needs a compact, persistent gate result.
 
-## The Problem
+[한국어 문서](README.ko.md)
 
-AI harnesses often ask LLMs to evaluate dozens of boolean conditions:
-- "Check if user is authenticated, has permission, quota OK, rate limit OK, resource exists..."
-- LLM must read all conditions, call tools for each, reason about AND/OR logic
-- **Slow (seconds), expensive (tokens), non-deterministic (hallucination risk)**
+## Boundary
 
-## The Solution
+`bitctx` does not authenticate users, discover facts, evaluate policy, or grant permission. A passing mask means only that the values stored in that session satisfy the selected schema mask. The caller remains responsible for obtaining trustworthy condition values and enforcing every external authorization and policy constraint.
 
-**bitctx** moves condition evaluation out of the LLM:
+State is stored as plaintext JSON. Do not put secrets in session IDs, bit names, descriptions, or state.
 
-```
-┌─────────────┐     Deterministic      ┌──────────────┐     Minimal      ┌─────┐
-│  Harness    │ ────── boolean ──────► │   bitctx     │ ──── pass/fail ──► │ LLM │
-│  (Python)   │   checks (code)        │  (bitwise)   │   + failed bits   │     │
-└─────────────┘                        └──────────────┘                  └─────┘
-        │                                      │                              │
-        │  check_auth()                        │  0b1011 & 0b1111             │  "Approved"
-        │  check_rbac()                        │  = 0b1011 (pass)             │
-        │  check_quota()                       │                              │
-        ▼                                      ▼                              ▼
-   Code decides                          Bitwise AND                      Generates
-   each condition                        O(1) eval                        human text
-```
+## Install
 
-**Result**: 80%+ token reduction, 50x latency improvement, deterministic decisions.
+Supported release platforms are Linux and macOS on x86-64 and ARM64. Windows is not supported in v0.2.0.
 
----
-
-## Architecture
-
-| Component | Role |
-|-----------|------|
-| **bitctx CLI** | Rust binary: bit memory + mask eval + natural language decode |
-| **Schema** | JSON: bit index ↔ name/description, named masks (AND combinations) |
-| **Storage** | `~/.bitctx/<session>.json` (file-based, atomic writes, file locking) |
-| **Skill Wrapper** | `skills/bit-context/bitctx_skill.sh` for harness integration |
-
----
-
-## Quick Start
+Install the latest signed-by-checksum release asset:
 
 ```bash
-# Build
-cd bitctx-cli && cargo build --release
+curl -fsSL https://raw.githubusercontent.com/kuil09/bit-context/main/install.sh | bash
+```
 
-# Define schema (schema.json)
+Set `INSTALL_DIR` to install somewhere other than `/usr/local/bin`. The installer fails closed when the release checksum, checksum tool, asset, or download is unavailable.
+
+Build from source with Rust 1.85 or newer:
+
+```bash
+cd bitctx-cli
+cargo build --release --locked
+install target/release/bitctx /usr/local/bin/bitctx
+```
+
+## Quick start
+
+Create a schema:
+
+```json
 {
   "version": 1,
   "bits": {
-    "0": {"name": "user_authenticated", "desc": "User authenticated"},
-    "1": {"name": "has_permission", "desc": "Has required permission"},
-    "2": {"name": "quota_ok", "desc": "Quota not exceeded"}
+    "0": {"name": "user_authenticated", "desc": "Authentication was verified"},
+    "1": {"name": "has_permission", "desc": "Required permission was verified"},
+    "2": {"name": "quota_ok", "desc": "Quota check passed"}
   },
   "masks": {
     "required": {"bits": [0, 1, 2], "desc": "All required conditions"}
   }
 }
+```
 
-# Initialize session
+Initialize and evaluate an explicit session:
+
+```bash
 bitctx init --session deploy-123 --schema schema.json
 
-# Harness sets bits after checking conditions
-bitctx set --session deploy-123 --bit user_authenticated,has_permission --value true,true
-
-# Instant bitwise evaluation
+# A new v0.2 session is immediately evaluable and starts with all bits at zero.
 bitctx eval --session deploy-123 --mask required --format json
-# {"pass":false,"missing":[2],"missing_labels":["quota_ok"]}
 
-# Natural language explanation (only on failure)
-bitctx explain --session deploy-123 --mask required --lang en
-# "Conditions not satisfied: quota_ok"
+# Set only values obtained from real checks.
+bitctx set --session deploy-123 \
+  --bit user_authenticated,has_permission,quota_ok \
+  --value true,true,false
+
+bitctx eval --session deploy-123 --mask required --format json
 ```
 
----
+Failure output preserves mask definition order and contains both compatibility fields and structured details:
 
-## Harness Integration (Python)
-
-```python
-import subprocess, json, os
-
-os.environ["BITCTX_SESSION"] = "task-123"
-BITCTX = "/usr/local/bin/bitctx"
-
-def bitctx_init(schema_path):
-    subprocess.run([BITCTX, "init", "--session", "task-123", "--schema", schema_path], check=True)
-
-def bitctx_set(bits: dict):
-    names = ",".join(bits.keys())
-    vals = ",".join("true" if v else "false" for v in bits.values())
-    subprocess.run([BITCTX, "set", "--session", "task-123", "--bit", names, "--value", vals], check=True)
-
-def bitctx_eval(mask: str) -> dict:
-    result = subprocess.run([BITCTX, "eval", "--session", "task-123", "--mask", mask, "--format", "json"],
-                           capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
-
-def bitctx_explain(mask: str) -> str:
-    result = subprocess.run([BITCTX, "explain", "--session", "task-123", "--mask", mask, "--lang", "en"],
-                           capture_output=True, text=True, check=True)
-    return result.stdout.strip()
-
-# Usage
-bitctx_init("schema.json")
-bitctx_set({"user_authenticated": True, "has_permission": True, "quota_ok": False})
-
-result = bitctx_eval("required")
-if result["pass"]:
-    prompt = "Deployment approved."
-else:
-    prompt = f"Deployment rejected: {bitctx_explain('required')}"
+```json
+{
+  "pass": false,
+  "missing": [2],
+  "missing_labels": ["quota_ok"],
+  "missing_conditions": [
+    {"index": 2, "name": "quota_ok", "desc": "Quota check passed"}
+  ]
+}
 ```
 
----
+## Commands
 
-## Performance
-
-| Metric | Without bitctx | With bitctx |
-|--------|----------------|-------------|
-| Prompt tokens | ~450 | ~40 |
-| LLM tool calls | 12+ | 0 |
-| Latency | 2-10 sec | 0.2-0.5 sec |
-| Deterministic | ❌ | ✅ |
-
-See [bench_harness.sh](bench_harness.sh) for detailed comparison.
-
----
-
-## Project Structure
-
-```
-bit-mania/
-├── specs/
-│   └── goal-bitctx-cli.md       # Goal & requirements spec
-├── bitctx-cli/                  # Rust CLI
-│   ├── src/
-│   │   ├── models/              # Schema, Session
-│   │   ├── storage/             # JSON I/O, file locking
-│   │   └── commands/            # init, set, eval, explain, dump, reset
-│   └── Cargo.toml
-├── skills/bit-context/          # Harness skill wrapper
-│   ├── bitctx_skill.sh
-│   ├── example_schema.json
-│   └── README.md
-├── bench_perf.sh                # Microbenchmark
-├── bench_harness.sh             # Realistic harness comparison
-└── README.ko.md                 # Korean version
+```text
+bitctx [--data-dir PATH] init    --session ID --schema FILE [--force]
+bitctx [--data-dir PATH] set     --session ID --bit NAMES --value VALUES
+bitctx [--data-dir PATH] eval    --session ID --mask NAME [--format json|text]
+bitctx [--data-dir PATH] explain --session ID --mask NAME [--lang ko|en]
+bitctx [--data-dir PATH] dump    --session ID [--format json|text]
+bitctx [--data-dir PATH] reset   --session ID [--force]
 ```
 
----
+The data directory is selected in this order:
 
-## Roadmap
+1. `--data-dir <PATH>`
+2. `BITCTX_DATA_DIR`
+3. `~/.bitctx`
 
-- [ ] v2: Daemon mode (Unix socket) for sub-millisecond eval
-- [ ] v2: Library embedding (Rust crate / Python bindings)
-- [ ] v2: Arbitrary bit width (bitvec)
-- [ ] Schema migration tool
-- [ ] TTL/auto-expiry for bits
+Each session ID must match `[A-Za-z0-9][A-Za-z0-9._-]{0,127}` and be one normal path component. Path separators, absolute paths, `.`, `..`, control characters, and longer IDs are rejected.
 
----
+## Storage and concurrency
+
+The default layout is:
+
+```text
+~/.bitctx/
+├── .locks/
+│   └── deploy-123.lock
+└── deploy-123/
+    ├── schema.json
+    └── session.json
+```
+
+- `init`, `set`, and `reset` take an exclusive per-session lock.
+- `eval`, `explain`, and `dump` take a shared per-session lock.
+- Lock files live outside deletable session directories.
+- A small lock file may remain after `reset`; keeping its inode stable prevents lock-unlink races when another process still references the session ID.
+- State writes use a same-directory temporary file, flush and sync it, then rename it atomically.
+- On Unix, data directories use mode `0700`; state and lock files use mode `0600`.
+- `set` fails when the session was not initialized.
+- `init --force` reinitializes the schema and zeroes every bit while holding the lock.
+
+Schema validation rejects duplicate JSON indices, duplicate bit names, invalid names, unknown mask references, empty masks, and duplicate bits within a mask. Descriptions may contain Unicode.
+
+## v0.2 migration
+
+Valid v0.1 `schema.json` and `session.json` files remain readable and retain the same schema hash algorithm. Notable behavior changes are:
+
+- `init` now creates both files with a zeroed session, so `eval` works immediately.
+- The compatibility wrapper no longer uses `BITCTX_SESSION=default`; set an explicit session.
+- `set` no longer creates missing sessions.
+- Unsafe session IDs are rejected.
+- `eval` adds `missing_conditions` without removing `missing` or `missing_labels`.
+
+## Codex skill
+
+The release includes `bit-context-skill.zip`, containing `skills/bit-context/SKILL.md`, `agents/openai.yaml`, the compatibility wrapper, and an example schema. Extract the `bit-context` directory into your Codex skills directory, then restart or refresh skill discovery.
+
+The skill checks that `bitctx` is installed but never installs it automatically. It only sets condition values backed by observed evidence and never treats a passing mask as external authorization.
+
+The wrapper is optional:
+
+```bash
+export BITCTX_SESSION=deploy-123
+skills/bit-context/bitctx_skill.sh eval required json
+```
+
+## Performance evidence
+
+`bench_perf.sh` measures local CLI process and evaluation time on the machine where it is run. `bench_harness.sh` shows an illustrative harness comparison; its token, model latency, and cost figures are examples, not guarantees or measurements of the local CLI.
+
+Run a local measurement with an explicit binary and isolated data directory:
+
+```bash
+BITCTX=bitctx ITERATIONS=100 ./bench_perf.sh
+```
+
+## Development
+
+```bash
+cd bitctx-cli
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test --locked
+
+cd ..
+bash tests/test_wrapper.sh
+shellcheck install.sh bench_perf.sh bench_harness.sh \
+  skills/bit-context/bitctx_skill.sh tests/test_installer.sh \
+  tests/smoke_release.sh tests/test_wrapper.sh
+```
 
 ## License
 

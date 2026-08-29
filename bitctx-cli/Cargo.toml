@@ -1,8 +1,11 @@
 [package]
 name = "bitctx"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
+rust-version = "1.85"
 description = "Bit-memory context store CLI for AI harness skills"
+license = "MIT"
+repository = "https://github.com/kuil09/bit-context"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive", "env"] }
@@ -14,6 +17,9 @@ fs2 = "0.4"  # file locking for concurrent access
 dirs = "5.0"  # cross-platform home directory
 chrono = { version = "0.4", features = ["serde"] }
 twox-hash = "2.0"  # stable hashing for schema versioning
+
+[dev-dependencies]
+tempfile = "3.21"
 
 [profile.release]
 strip = true

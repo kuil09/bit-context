@@ -34,11 +34,6 @@ jobs:
             os: macos-latest
             artifact: bitctx-aarch64-macos
             cross: "false"
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            artifact: bitctx-x86_64-windows
-            ext: .exe
-            cross: "false"
     steps:
       - uses: actions/checkout@v4
 

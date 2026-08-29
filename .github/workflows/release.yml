@@ -50,12 +50,19 @@ jobs:
 
       - name: Package artifact
         working-directory: bitctx-cli
+        shell: bash
         run: |
           BINARY="target/${{ matrix.target }}/release/bitctx${{ matrix.ext }}"
           mkdir -p dist
           cp "$BINARY" "dist/${{ matrix.artifact }}${{ matrix.ext }}"
           cd dist
-          sha256sum "${{ matrix.artifact }}${{ matrix.ext }}" > "${{ matrix.artifact }}${{ matrix.ext }}.sha256"
+          if command -v sha256sum >/dev/null; then
+            sha256sum "${{ matrix.artifact }}${{ matrix.ext }}" > "${{ matrix.artifact }}${{ matrix.ext }}.sha256"
+          elif command -v shasum >/dev/null; then
+            shasum -a 256 "${{ matrix.artifact }}${{ matrix.ext }}" > "${{ matrix.artifact }}${{ matrix.ext }}.sha256"
+          elif command -v certutil >/dev/null; then
+            certutil -hashfile "${{ matrix.artifact }}${{ matrix.ext }}" SHA256 > "${{ matrix.artifact }}${{ matrix.ext }}.sha256"
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

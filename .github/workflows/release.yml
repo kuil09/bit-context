@@ -21,20 +21,24 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             artifact: bitctx-x86_64-linux
+            cross: "false"
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             artifact: bitctx-aarch64-linux
-            cross: true
+            cross: "true"
           - target: x86_64-apple-darwin
             os: macos-latest
             artifact: bitctx-x86_64-macos
+            cross: "false"
           - target: aarch64-apple-darwin
             os: macos-latest
             artifact: bitctx-aarch64-macos
+            cross: "false"
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             artifact: bitctx-x86_64-windows
             ext: .exe
+            cross: "false"
     steps:
       - uses: actions/checkout@v4
 

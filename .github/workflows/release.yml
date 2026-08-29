@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
@@ -12,95 +12,184 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  quality:
+    name: Release quality gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: bitctx-cli
+      - name: Rust checks
+        working-directory: bitctx-cli
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test --locked
+      - name: Shell checks
+        run: |
+          shellcheck install.sh bench_perf.sh bench_harness.sh \
+            skills/bit-context/bitctx_skill.sh \
+            tests/test_installer.sh tests/smoke_release.sh tests/test_wrapper.sh
+          bash tests/test_wrapper.sh
+          bash tests/test_installer.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --requirement requirements-ci.txt
+      - run: python scripts/validate_skill.py skills/bit-context
+
   build:
     name: Build ${{ matrix.target }}
+    needs: quality
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: true
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             artifact: bitctx-x86_64-linux
-            cross: "false"
+            cross: false
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             artifact: bitctx-aarch64-linux
-            cross: "true"
+            cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
             artifact: bitctx-x86_64-macos
-            cross: "false"
+            cross: false
           - target: aarch64-apple-darwin
             os: macos-latest
             artifact: bitctx-aarch64-macos
-            cross: "false"
+            cross: false
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.85.0
         with:
           targets: ${{ matrix.target }}
-
-      - name: Install cross (for aarch64-linux)
-        if: matrix.cross == 'true'
-        run: cargo install cross --locked
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-
-      - name: Build
+          workspaces: bitctx-cli
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --locked
+      - name: Build locked release
         working-directory: bitctx-cli
         run: |
-          if [ "${{ matrix.cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }}
+          if [[ "${{ matrix.cross }}" == "true" ]]; then
+            cross build --locked --release --target "${{ matrix.target }}"
           else
-            cargo build --release --target ${{ matrix.target }}
+            cargo build --locked --release --target "${{ matrix.target }}"
           fi
-
-      - name: Package artifact
+      - name: Package and checksum
         working-directory: bitctx-cli
         shell: bash
         run: |
-          BINARY="target/${{ matrix.target }}/release/bitctx${{ matrix.ext }}"
-          mkdir -p dist
-          cp "$BINARY" "dist/${{ matrix.artifact }}${{ matrix.ext }}"
-          cd dist
-          if command -v sha256sum >/dev/null; then
-            sha256sum "${{ matrix.artifact }}${{ matrix.ext }}" > "${{ matrix.artifact }}${{ matrix.ext }}.sha256"
-          elif command -v shasum >/dev/null; then
-            shasum -a 256 "${{ matrix.artifact }}${{ matrix.ext }}" > "${{ matrix.artifact }}${{ matrix.ext }}.sha256"
-          elif command -v certutil >/dev/null; then
-            certutil -hashfile "${{ matrix.artifact }}${{ matrix.ext }}" SHA256 > "${{ matrix.artifact }}${{ matrix.ext }}.sha256"
+          binary="target/${{ matrix.target }}/release/bitctx"
+          test -x "$binary"
+          host="$(rustc -vV | sed -n 's/^host: //p')"
+          if [[ "$host" == "${{ matrix.target }}" ]]; then
+            ../tests/smoke_release.sh "$binary"
           fi
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          mkdir -p dist
+          cp "$binary" "dist/${{ matrix.artifact }}"
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd dist && sha256sum "${{ matrix.artifact }}" >"${{ matrix.artifact }}.sha256")
+          elif command -v shasum >/dev/null 2>&1; then
+            (cd dist && shasum -a 256 "${{ matrix.artifact }}" >"${{ matrix.artifact }}.sha256")
+          else
+            echo "No SHA-256 tool is available" >&2
+            exit 1
+          fi
+          test -s "dist/${{ matrix.artifact }}.sha256"
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: bitctx-cli/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  skill-package:
+    name: Package Codex skill
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build independently installable archive
+        run: |
+          cd skills
+          zip -r ../bit-context-skill.zip bit-context -x '*/.DS_Store'
+          cd ..
+          sha256sum bit-context-skill.zip >bit-context-skill.zip.sha256
+          unzip -l bit-context-skill.zip | grep -q 'bit-context/SKILL.md'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bit-context-skill
+          path: |
+            bit-context-skill.zip
+            bit-context-skill.zip.sha256
+          if-no-files-found: error
           retention-days: 1
 
   release:
-    name: Create Release
-    needs: build
+    name: Create GitHub release
+    needs:
+      - build
+      - skill-package
     runs-on: ubuntu-latest
-    if: ${{ !cancelled() }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
-
-      - name: Show artifacts
-        run: ls -la dist/
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - name: Verify complete release set
+        run: |
+          expected=(
+            bitctx-x86_64-linux
+            bitctx-aarch64-linux
+            bitctx-x86_64-macos
+            bitctx-aarch64-macos
+            bit-context-skill.zip
+          )
+          for asset in "${expected[@]}"; do
+            test -s "dist/$asset"
+            test -s "dist/$asset.sha256"
+          done
+          cd dist
+          sha256sum --check bitctx-x86_64-linux.sha256
+          sha256sum --check bitctx-aarch64-linux.sha256
+          sha256sum --check bitctx-x86_64-macos.sha256
+          sha256sum --check bitctx-aarch64-macos.sha256
+          sha256sum --check bit-context-skill.zip.sha256
+          unzip -l bit-context-skill.zip | grep -q 'bit-context/SKILL.md'
+      - name: Prepare release notes
+        run: |
+          notes=".github/release-notes/${GITHUB_REF_NAME}.md"
+          if [[ -f "$notes" ]]; then
+            cp "$notes" dist/release-notes.md
+          else
+            printf 'Release %s\n' "$GITHUB_REF_NAME" >dist/release-notes.md
+          fi
+      - uses: softprops/action-gh-release@v2
         with:
-          files: dist/**/*
+          body_path: dist/release-notes.md
           generate_release_notes: true
-          draft: false
-          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            dist/bitctx-x86_64-linux
+            dist/bitctx-x86_64-linux.sha256
+            dist/bitctx-aarch64-linux
+            dist/bitctx-aarch64-linux.sha256
+            dist/bitctx-x86_64-macos
+            dist/bitctx-x86_64-macos.sha256
+            dist/bitctx-aarch64-macos
+            dist/bitctx-aarch64-macos.sha256
+            dist/bit-context-skill.zip
+            dist/bit-context-skill.zip.sha256

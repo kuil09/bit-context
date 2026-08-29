@@ -1,14 +1,33 @@
 #!/usr/bin/env bash
-# Performance comparison: bitctx vs LLM prompt approach
+# Measure local bitctx CLI latency and print a separate illustrative LLM comparison.
 
 set -euo pipefail
 
-BITCTX="${BITCTX:-/Users/gun9/Developer/bit-mania/bitctx-cli/target/release/bitctx}"
-SESSION="perf-test-$(date +%s)"
-SCHEMA="/tmp/perf_schema.json"
+BITCTX="${BITCTX:-bitctx}"
 ITERATIONS="${ITERATIONS:-100}"
+ILLUSTRATIVE_PROMPT_TOKENS="${ILLUSTRATIVE_PROMPT_TOKENS:-150}"
+ILLUSTRATIVE_RESPONSE_TOKENS="${ILLUSTRATIVE_RESPONSE_TOKENS:-50}"
+ILLUSTRATIVE_LLM_LATENCY_MS="${ILLUSTRATIVE_LLM_LATENCY_MS:-800}"
 
-cat > "$SCHEMA" <<'EOF'
+command -v "$BITCTX" >/dev/null 2>&1 || {
+    echo "bitctx is not installed or is not executable: $BITCTX" >&2
+    exit 1
+}
+command -v perl >/dev/null 2>&1 || {
+    echo "perl is required for high-resolution timing" >&2
+    exit 1
+}
+[[ "$ITERATIONS" =~ ^[1-9][0-9]*$ ]] || {
+    echo "ITERATIONS must be a positive integer" >&2
+    exit 1
+}
+
+DATA_DIR="$(mktemp -d)"
+SCHEMA="$DATA_DIR/schema-source.json"
+SESSION="perf-$$"
+trap 'rm -rf "$DATA_DIR"' EXIT
+
+cat >"$SCHEMA" <<'EOF'
 {
   "version": 1,
   "bits": {
@@ -30,85 +49,54 @@ cat > "$SCHEMA" <<'EOF'
     "15": {"name": "admin_override", "desc": "Admin override granted"}
   },
   "masks": {
-    "required": {"bits": [0,1,3,5,6,7,10,11,13], "desc": "Full access requirements"},
-    "read_only": {"bits": [0,2,7], "desc": "Read access requirements"},
-    "admin": {"bits": [0,1,15], "desc": "Admin access requirements"}
+    "required": {"bits": [0, 1, 3, 5, 6, 7, 10, 11, 13], "desc": "Full access requirements"}
   }
 }
 EOF
 
-echo "=== bitctx Performance Benchmark ==="
-echo "Iterations: $ITERATIONS"
-echo "Conditions: 16 bits, 3 masks (largest: 9 conditions)"
-echo ""
+run_bitctx() {
+    "$BITCTX" --data-dir "$DATA_DIR/state" "$@"
+}
 
-# Setup
-$BITCTX init --session "$SESSION" --schema "$SCHEMA" >/dev/null
-$BITCTX set --session "$SESSION" --bit "0,1,2,3,5,6,7,10,11,13" --value "true,true,true,true,true,true,true,true,true,true" >/dev/null
+now_us() {
+    perl -MTime::HiRes=time -e 'printf "%.0f\n", time * 1000000'
+}
 
-# Warmup
-for i in {1..10}; do
-    $BITCTX eval --session "$SESSION" --mask required --format json >/dev/null
+run_bitctx init --session "$SESSION" --schema "$SCHEMA" >/dev/null
+run_bitctx set --session "$SESSION" \
+    --bit "0,1,3,5,6,7,10,11,13" \
+    --value "true,true,true,true,true,true,true,true,true" >/dev/null
+
+for _ in $(seq 1 10); do
+    run_bitctx eval --session "$SESSION" --mask required --format json >/dev/null
 done
 
-# Benchmark bitctx eval using /usr/bin/time or perl for microseconds
-echo "--- bitctx eval (bitwise) ---"
-start_ms=$(perl -MTime::HiRes=time -e 'printf "%.0f\n", time*1000')
-for i in $(seq 1 $ITERATIONS); do
-    $BITCTX eval --session "$SESSION" --mask required --format json >/dev/null
+START_US="$(now_us)"
+for _ in $(seq 1 "$ITERATIONS"); do
+    run_bitctx eval --session "$SESSION" --mask required --format json >/dev/null
 done
-end_ms=$(perl -MTime::HiRes=time -e 'printf "%.0f\n", time*1000')
-bitctx_ms=$((end_ms - start_ms))
-bitctx_per_call=$((bitctx_ms * 1000 / ITERATIONS))
+END_US="$(now_us)"
 
-echo "Total: ${bitctx_ms}ms for $ITERATIONS calls"
-echo "Per call: ${bitctx_per_call}μs (includes process spawn)"
+TOTAL_US=$((END_US - START_US))
+PER_CALL_US=$((TOTAL_US / ITERATIONS))
+if ((PER_CALL_US < 1)); then
+    PER_CALL_US=1
+fi
 
-# Measure cold start separately
-echo ""
-echo "--- Cold start (first call) ---"
-$BITCTX reset --session "$SESSION" --force >/dev/null
-$BITCTX init --session "$SESSION" --schema "$SCHEMA" >/dev/null
-$BITCTX set --session "$SESSION" --bit "0,1,2,3,5,6,7,10,11,13" --value "true,true,true,true,true,true,true,true,true,true" >/dev/null
-start_ms=$(perl -MTime::HiRes=time -e 'printf "%.0f\n", time*1000')
-$BITCTX eval --session "$SESSION" --mask required --format json >/dev/null
-end_ms=$(perl -MTime::HiRes=time -e 'printf "%.0f\n", time*1000')
-cold_ms=$((end_ms - start_ms))
-echo "Cold start: ${cold_ms}ms"
+echo "Local bitctx measurement"
+echo "  Platform: $(uname -s) $(uname -m)"
+echo "  Iterations: $ITERATIONS"
+echo "  Total: ${TOTAL_US} us"
+echo "  Mean per CLI call: ${PER_CALL_US} us (includes process startup, locking, read, and JSON output)"
 
-# Token estimation for LLM approach
-echo ""
-echo "=== LLM Prompt Approach (Estimated) ==="
+TOTAL_ESTIMATED_TOKENS=$((ILLUSTRATIVE_PROMPT_TOKENS + ILLUSTRATIVE_RESPONSE_TOKENS))
+ILLUSTRATIVE_SPEEDUP=$((ILLUSTRATIVE_LLM_LATENCY_MS * 1000 / PER_CALL_US))
 
-# Typical prompt for 9 conditions
-prompt_tokens=150  # System + user prompt with condition descriptions
-response_tokens=50  # Expected response
-total_tokens=$((prompt_tokens + response_tokens))
-
-# Typical LLM API latency (varies by provider)
-llm_latency_ms=800  # Conservative average for small prompt
-
-echo "Prompt tokens (9 conditions listed): ~${prompt_tokens}"
-echo "Response tokens: ~${response_tokens}"
-echo "Total tokens per eval: ~${total_tokens}"
-echo "Estimated API latency: ~${llm_latency_ms}ms"
-
-# Comparison
-echo ""
-echo "=== Comparison ==="
-speedup=$((llm_latency_ms * 1000 / bitctx_per_call))
-token_savings=$((total_tokens * ITERATIONS))
-
-echo "bitctx eval:     ${bitctx_per_call}μs (${bitctx_ms}ms total)"
-echo "LLM API (est):   ${llm_latency_ms}ms per call (${llm_latency_ms}000μs)"
-echo "Speedup:         ~${speedup}x faster"
-echo ""
-echo "Token savings for $ITERATIONS evals: ~${token_savings} tokens"
-echo "At \$0.0015/1K tokens (GPT-4o-mini): ~\$${token_savings/1000000}"
-
-# Cleanup
-$BITCTX reset --session "$SESSION" --force >/dev/null
-rm "$SCHEMA"
-
-echo ""
-echo "Note: LLM latency varies (200ms-3s). bitctx is local, deterministic, no network."
+echo
+echo "Illustrative LLM comparison (not measured and not guaranteed)"
+echo "  Assumed prompt tokens: $ILLUSTRATIVE_PROMPT_TOKENS"
+echo "  Assumed response tokens: $ILLUSTRATIVE_RESPONSE_TOKENS"
+echo "  Assumed total tokens: $TOTAL_ESTIMATED_TOKENS"
+echo "  Assumed API latency: ${ILLUSTRATIVE_LLM_LATENCY_MS} ms"
+echo "  Implied latency ratio under those assumptions: ${ILLUSTRATIVE_SPEEDUP}x"
+echo "  Provider, model, network, prompt, and tool behavior can change these values materially."

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Bit Context"
+  short_description: "Track verified and missing boolean gate evidence"
+  default_prompt: "Use $bit-context to track these explicit boolean gate conditions and report missing evidence deterministically."
+policy:
+  allow_implicit_invocation: true

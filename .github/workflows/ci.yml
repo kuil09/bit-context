@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust quality floor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: bitctx-cli
+      - name: Formatting
+        working-directory: bitctx-cli
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        working-directory: bitctx-cli
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Tests
+        working-directory: bitctx-cli
+        run: cargo test --locked
+
+  shell:
+    name: Shell and wrapper behavior
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: >-
+          shellcheck
+          install.sh
+          bench_perf.sh
+          bench_harness.sh
+          skills/bit-context/bitctx_skill.sh
+          tests/test_installer.sh
+          tests/smoke_release.sh
+          tests/test_wrapper.sh
+      - name: Wrapper tests
+        run: bash tests/test_wrapper.sh
+      - name: Installer tests
+        run: bash tests/test_installer.sh
+
+  skill:
+    name: Codex skill metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --requirement requirements-ci.txt
+      - run: python scripts/validate_skill.py skills/bit-context

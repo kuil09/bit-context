@@ -1,5 +1,5 @@
-use crate::storage::delete_session;
-use anyhow::{Context, Result};
+use crate::storage::{Store, validate_session_id};
+use anyhow::Result;
 use clap::Args;
 
 #[derive(Args, Debug)]
@@ -11,7 +11,8 @@ pub struct ResetArgs {
     force: bool,
 }
 
-pub fn run(args: ResetArgs) -> Result<()> {
+pub fn run(store: &Store, args: ResetArgs) -> Result<()> {
+    validate_session_id(&args.session)?;
     if !args.force {
         print!("Delete session '{}'? [y/N] ", args.session);
         use std::io::{self, Write};
@@ -24,7 +25,10 @@ pub fn run(args: ResetArgs) -> Result<()> {
         }
     }
 
-    delete_session(&args.session).context("failed to delete session")?;
-    println!("Session '{}' deleted.", args.session);
+    if store.reset(&args.session)? {
+        println!("Session '{}' deleted.", args.session);
+    } else {
+        println!("Session '{}' did not exist.", args.session);
+    }
     Ok(())
 }

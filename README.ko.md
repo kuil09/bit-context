@@ -77,12 +77,45 @@ bitctx eval --session deploy-123 --mask required --format json
 }
 ```
 
+빠르게 상태를 확인할 때는 텍스트 출력으로 모든 비트 위치를 고정 8×8 행렬에 표시할 수 있습니다.
+
+```bash
+bitctx eval --session deploy-123 --mask required --format text
+```
+
+```text
+     0   1   2   3   4   5   6   7
+00 ┌───┬───┬───┬───┬───┬───┬───┬───┐
+   │ O │ O │ X │ · │ · │ · │ · │ · │
+08 ├───┼───┼───┼───┼───┼───┼───┼───┤
+   │ · │ · │ · │ · │ · │ · │ · │ · │
+16 ├───┼───┼───┼───┼───┼───┼───┼───┤
+   │ · │ · │ · │ · │ · │ · │ · │ · │
+24 ├───┼───┼───┼───┼───┼───┼───┼───┤
+   │ · │ · │ · │ · │ · │ · │ · │ · │
+32 ├───┼───┼───┼───┼───┼───┼───┼───┤
+   │ · │ · │ · │ · │ · │ · │ · │ · │
+40 ├───┼───┼───┼───┼───┼───┼───┼───┤
+   │ · │ · │ · │ · │ · │ · │ · │ · │
+48 ├───┼───┼───┼───┼───┼───┼───┼───┤
+   │ · │ · │ · │ · │ · │ · │ · │ · │
+56 ├───┼───┼───┼───┼───┼───┼───┼───┤
+   │ · │ · │ · │ · │ · │ · │ · │ · │
+   └───┴───┴───┴───┴───┴───┴───┴───┘
+
+RESULT: X
+```
+
+왼쪽 위가 bit 0이고 오른쪽 아래가 bit 63입니다. `O`는 선택된 조건이 충족됨, `X`는 현재 미충족, `·`는 선택한 마스크 밖의 위치를 뜻합니다. `X`는 검증된 거짓이라는 뜻이 아니며, 아직 근거가 없어 설정되지 않은 조건일 수도 있습니다.
+
+텍스트 출력에 `--show all`, `--show satisfied`, `--show missing`을 추가하면 각각 전체, 충족, 미충족 조건의 이름과 설명을 마스크 정의 순서로 볼 수 있습니다. JSON 출력에서는 `--show`를 거부하며, JSON 기본값과 구조는 그대로 유지됩니다.
+
 ## 명령
 
 ```text
 bitctx [--data-dir PATH] init    --session ID --schema FILE [--force]
 bitctx [--data-dir PATH] set     --session ID --bit NAMES --value VALUES
-bitctx [--data-dir PATH] eval    --session ID --mask NAME [--format json|text]
+bitctx [--data-dir PATH] eval    --session ID --mask NAME [--format json|text] [--show all|satisfied|missing]
 bitctx [--data-dir PATH] explain --session ID --mask NAME [--lang ko|en]
 bitctx [--data-dir PATH] dump    --session ID [--format json|text]
 bitctx [--data-dir PATH] reset   --session ID [--force]
@@ -141,6 +174,7 @@ bitctx [--data-dir PATH] reset   --session ID [--force]
 ```bash
 export BITCTX_SESSION=deploy-123
 skills/bit-context/bitctx_skill.sh eval required json
+skills/bit-context/bitctx_skill.sh eval required text missing
 ```
 
 ## 성능 근거

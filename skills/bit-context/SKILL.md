@@ -83,6 +83,7 @@ When continuing or reviewing an existing task:
 
 - Parse the JSON `pass` field to decide whether a mask passed. A successful `bitctx eval` process exit only means that evaluation ran; it does not mean the mask passed.
 - On a resumed task, prefer the ordered `missing_conditions` list over reconstructing progress from conversation history.
+- For a human-readable overview, optionally use `--format text` and `--show missing`. Its fixed 8×8 matrix uses `O` for satisfied selected bits, `X` for unsatisfied selected bits, and `·` for positions outside the mask; `X` does not prove a verified negative.
 - A passing checkpoint mask permits the workflow to continue only within the caller's own rules; it is not external authorization.
 
 ## Error Handling

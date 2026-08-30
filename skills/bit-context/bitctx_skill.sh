@@ -18,7 +18,7 @@ Commands:
   init <schema.json> [--force]       Initialize or reinitialize a session
   set <bit> <value>                  Set one bit
   set-multi <bits_csv> <values_csv>  Set multiple bits atomically
-  eval <mask> [json|text]            Evaluate a mask
+  eval <mask> [json|text] [show]     Evaluate a mask; show is all|satisfied|missing
   explain <mask> [ko|en]             Explain missing conditions
   dump [json|text]                   Dump the complete session state
   reset [--force]                    Delete the session
@@ -65,8 +65,12 @@ cmd_set_multi() {
 }
 
 cmd_eval() {
-    [[ $# -ge 1 && $# -le 2 ]] || fail_usage "Usage: bitctx_skill.sh eval <mask> [json|text]"
-    "$BITCTX_BIN" eval --session "$BITCTX_SESSION" --mask "$1" --format "${2:-json}"
+    [[ $# -ge 1 && $# -le 3 ]] || fail_usage "Usage: bitctx_skill.sh eval <mask> [json|text] [all|satisfied|missing]"
+    if [[ $# -eq 3 ]]; then
+        "$BITCTX_BIN" eval --session "$BITCTX_SESSION" --mask "$1" --format "$2" --show "$3"
+    else
+        "$BITCTX_BIN" eval --session "$BITCTX_SESSION" --mask "$1" --format "${2:-json}"
+    fi
 }
 
 cmd_explain() {

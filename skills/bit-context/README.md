@@ -55,6 +55,8 @@ Do not encode the whole conversation as bits. Keep source material and nuanced r
 
 Always inspect the JSON `pass` field. A successful `eval` process exit means that evaluation ran, not that the selected mask passed.
 
+For a human-readable overview, use `--format text`. It always renders bit positions 0 through 63 as an 8×8 matrix: `O` is satisfied, `X` is unsatisfied, and `·` is outside the selected mask. `X` does not prove a verified negative. Add `--show all`, `--show satisfied`, or `--show missing` for ordered details.
+
 ## Compatibility wrapper
 
 The wrapper requires an explicit session for every command except help:
@@ -63,6 +65,7 @@ The wrapper requires an explicit session for every command except help:
 export BITCTX_SESSION=task-123
 ./bitctx_skill.sh init example_schema.json
 ./bitctx_skill.sh eval required json
+./bitctx_skill.sh eval required text missing
 ./bitctx_skill.sh init example_schema.json --force
 ./bitctx_skill.sh reset --force
 ```

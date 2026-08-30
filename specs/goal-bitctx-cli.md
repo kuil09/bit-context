@@ -15,6 +15,8 @@ Provide a local CLI and Codex skill that can persist boolean results already ver
 - `init`, `set`, `eval`, `explain`, `dump`, and `reset` operate through an explicit safe session ID.
 - `init` creates a schema and zeroed state that is immediately evaluable.
 - A named mask returns an ordered pass/fail result and structured missing conditions.
+- Text evaluation renders a fixed 8×8 matrix covering bit positions 0 through 63.
+- Text details can be filtered to all, satisfied, or missing conditions while preserving mask order.
 - Concurrent writers to one session do not lose successful updates.
 - The repository ships an installable Codex skill and four release binaries for Linux/macOS on x86-64/ARM64.
 
@@ -23,6 +25,7 @@ Provide a local CLI and Codex skill that can persist boolean results already ver
 - Valid v0.1 `schema.json` and `session.json` files remain readable.
 - The schema hash algorithm remains compatible with v0.1.
 - `missing` and `missing_labels` remain in the JSON output.
+- JSON remains the default evaluation format and keeps its existing structure.
 - External checks remain authoritative; `bitctx` never manufactures condition values or grants permission.
 - State remains recoverable JSON, with explicit documentation that it is plaintext.
 
@@ -31,13 +34,15 @@ Provide a local CLI and Codex skill that can persist boolean results already ver
 ```text
 bitctx [--data-dir PATH] init    --session ID --schema FILE [--force]
 bitctx [--data-dir PATH] set     --session ID --bit NAMES --value VALUES
-bitctx [--data-dir PATH] eval    --session ID --mask NAME [--format json|text]
+bitctx [--data-dir PATH] eval    --session ID --mask NAME [--format json|text] [--show all|satisfied|missing]
 bitctx [--data-dir PATH] explain --session ID --mask NAME [--lang ko|en]
 bitctx [--data-dir PATH] dump    --session ID [--format json|text]
 bitctx [--data-dir PATH] reset   --session ID [--force]
 ```
 
 Data directory precedence is CLI `--data-dir`, `BITCTX_DATA_DIR`, then `~/.bitctx`.
+
+In text evaluation, bit 0 is the top-left matrix cell and bit 63 is the bottom-right. `O` denotes a selected satisfied condition, `X` denotes a selected unsatisfied condition, and `·` denotes a position outside the mask. Unsatisfied does not assert a verified negative. `--show` is valid only with text output.
 
 Session IDs match `[A-Za-z0-9][A-Za-z0-9._-]{0,127}` and must be one normal path component.
 

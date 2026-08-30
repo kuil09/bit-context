@@ -55,6 +55,8 @@ bitctx eval --session "$SESSION_ID" --mask required --format json
 
 항상 JSON의 `pass` 필드를 확인하십시오. `eval` 프로세스의 성공 종료는 평가가 실행됐다는 뜻이지 선택한 마스크가 통과했다는 뜻이 아닙니다.
 
+사람이 빠르게 상태를 볼 때는 `--format text`를 사용합니다. bit 0부터 63까지 항상 8×8 행렬로 표시하며 `O`는 충족, `X`는 미충족, `·`는 선택한 마스크 밖을 뜻합니다. `X`가 검증된 거짓을 의미하지는 않습니다. `--show all`, `--show satisfied`, `--show missing`으로 상세 목록을 순서대로 볼 수 있습니다.
+
 ## 호환 래퍼
 
 래퍼는 help를 제외한 모든 명령에 명시적 세션을 요구합니다.
@@ -63,6 +65,7 @@ bitctx eval --session "$SESSION_ID" --mask required --format json
 export BITCTX_SESSION=task-123
 ./bitctx_skill.sh init example_schema.json
 ./bitctx_skill.sh eval required json
+./bitctx_skill.sh eval required text missing
 ./bitctx_skill.sh init example_schema.json --force
 ./bitctx_skill.sh reset --force
 ```

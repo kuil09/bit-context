@@ -77,12 +77,45 @@ Failure output preserves mask definition order and contains both compatibility f
 }
 ```
 
+For a compact visual check, text output renders every bit position in a fixed 8×8 matrix:
+
+```bash
+bitctx eval --session deploy-123 --mask required --format text
+```
+
+```text
+     0   1   2   3   4   5   6   7
+00 ┌───┬───┬───┬───┬───┬───┬───┬───┐
+   │ O │ O │ X │ · │ · │ · │ · │ · │
+08 ├───┼───┼───┼───┼───┼───┼───┼───┤
+   │ · │ · │ · │ · │ · │ · │ · │ · │
+16 ├───┼───┼───┼───┼───┼───┼───┼───┤
+   │ · │ · │ · │ · │ · │ · │ · │ · │
+24 ├───┼───┼───┼───┼───┼───┼───┼───┤
+   │ · │ · │ · │ · │ · │ · │ · │ · │
+32 ├───┼───┼───┼───┼───┼───┼───┼───┤
+   │ · │ · │ · │ · │ · │ · │ · │ · │
+40 ├───┼───┼───┼───┼───┼───┼───┼───┤
+   │ · │ · │ · │ · │ · │ · │ · │ · │
+48 ├───┼───┼───┼───┼───┼───┼───┼───┤
+   │ · │ · │ · │ · │ · │ · │ · │ · │
+56 ├───┼───┼───┼───┼───┼───┼───┼───┤
+   │ · │ · │ · │ · │ · │ · │ · │ · │
+   └───┴───┴───┴───┴───┴───┴───┴───┘
+
+RESULT: X
+```
+
+Bit 0 is the top-left cell and bit 63 is the bottom-right cell. `O` means a selected condition is satisfied, `X` means it is currently unsatisfied, and `·` means the position is outside the selected mask. An `X` is not a verified false claim; it can also represent an unset condition with no evidence yet.
+
+Add `--show all`, `--show satisfied`, or `--show missing` to text output to list matching condition names and descriptions in mask definition order. `--show` is rejected with JSON output, whose default and structure remain unchanged.
+
 ## Commands
 
 ```text
 bitctx [--data-dir PATH] init    --session ID --schema FILE [--force]
 bitctx [--data-dir PATH] set     --session ID --bit NAMES --value VALUES
-bitctx [--data-dir PATH] eval    --session ID --mask NAME [--format json|text]
+bitctx [--data-dir PATH] eval    --session ID --mask NAME [--format json|text] [--show all|satisfied|missing]
 bitctx [--data-dir PATH] explain --session ID --mask NAME [--lang ko|en]
 bitctx [--data-dir PATH] dump    --session ID [--format json|text]
 bitctx [--data-dir PATH] reset   --session ID [--force]
@@ -141,6 +174,7 @@ The wrapper is optional:
 ```bash
 export BITCTX_SESSION=deploy-123
 skills/bit-context/bitctx_skill.sh eval required json
+skills/bit-context/bitctx_skill.sh eval required text missing
 ```
 
 ## Performance evidence

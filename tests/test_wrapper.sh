@@ -53,6 +53,9 @@ assert_args $'set\n--session\nsession-1\n--bit\nauth,permission\n--value\ntrue,f
 BITCTX_BIN="$FAKE_BIN" BITCTX_SESSION=session-1 "$WRAPPER" eval required text
 assert_args $'eval\n--session\nsession-1\n--mask\nrequired\n--format\ntext'
 
+BITCTX_BIN="$FAKE_BIN" BITCTX_SESSION=session-1 "$WRAPPER" eval required text missing
+assert_args $'eval\n--session\nsession-1\n--mask\nrequired\n--format\ntext\n--show\nmissing'
+
 BITCTX_BIN="$FAKE_BIN" BITCTX_SESSION=session-1 "$WRAPPER" explain required en
 assert_args $'explain\n--session\nsession-1\n--mask\nrequired\n--lang\nen'
 

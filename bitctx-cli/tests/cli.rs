@@ -157,6 +157,178 @@ fn full_flow_starts_false_and_ends_true() {
 }
 
 #[test]
+fn text_eval_renders_fixed_matrix_and_filtered_details() {
+    let temp = tempfile::tempdir().expect("temp directory should be created");
+    let data_dir = temp.path().join("data");
+    let schema = write_schema(temp.path());
+    initialize(&data_dir, &schema, "matrix");
+    assert_success(&run(
+        &data_dir,
+        &[
+            "set",
+            "--session",
+            "matrix",
+            "--bit",
+            "auth",
+            "--value",
+            "true",
+        ],
+    ));
+
+    let output = run(
+        &data_dir,
+        &[
+            "eval",
+            "--session",
+            "matrix",
+            "--mask",
+            "required",
+            "--format",
+            "text",
+        ],
+    );
+    assert_success(&output);
+    let expected = concat!(
+        "     0   1   2   3   4   5   6   7\n",
+        "00 ┌───┬───┬───┬───┬───┬───┬───┬───┐\n",
+        "   │ O │ X │ · │ X │ · │ · │ · │ · │\n",
+        "08 ├───┼───┼───┼───┼───┼───┼───┼───┤\n",
+        "   │ · │ · │ · │ · │ · │ · │ · │ · │\n",
+        "16 ├───┼───┼───┼───┼───┼───┼───┼───┤\n",
+        "   │ · │ · │ · │ · │ · │ · │ · │ · │\n",
+        "24 ├───┼───┼───┼───┼───┼───┼───┼───┤\n",
+        "   │ · │ · │ · │ · │ · │ · │ · │ · │\n",
+        "32 ├───┼───┼───┼───┼───┼───┼───┼───┤\n",
+        "   │ · │ · │ · │ · │ · │ · │ · │ · │\n",
+        "40 ├───┼───┼───┼───┼───┼───┼───┼───┤\n",
+        "   │ · │ · │ · │ · │ · │ · │ · │ · │\n",
+        "48 ├───┼───┼───┼───┼───┼───┼───┼───┤\n",
+        "   │ · │ · │ · │ · │ · │ · │ · │ · │\n",
+        "56 ├───┼───┼───┼───┼───┼───┼───┼───┤\n",
+        "   │ · │ · │ · │ · │ · │ · │ · │ · │\n",
+        "   └───┴───┴───┴───┴───┴───┴───┴───┘\n",
+        "\n",
+        "RESULT: X\n",
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
+
+    let cases = [
+        (
+            "all",
+            concat!(
+                "\nDETAILS (all)\n",
+                "  X bit 3: 승인 (한국어 설명)\n",
+                "  O bit 0: auth (User is authenticated)\n",
+                "  X bit 1: permission (Permission is verified)\n",
+            ),
+        ),
+        (
+            "satisfied",
+            concat!(
+                "\nDETAILS (satisfied)\n",
+                "  O bit 0: auth (User is authenticated)\n",
+            ),
+        ),
+        (
+            "missing",
+            concat!(
+                "\nDETAILS (missing)\n",
+                "  X bit 3: 승인 (한국어 설명)\n",
+                "  X bit 1: permission (Permission is verified)\n",
+            ),
+        ),
+    ];
+
+    for (filter, details) in cases {
+        let output = run(
+            &data_dir,
+            &[
+                "eval",
+                "--session",
+                "matrix",
+                "--mask",
+                "required",
+                "--format",
+                "text",
+                "--show",
+                filter,
+            ],
+        );
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            format!("{expected}{details}")
+        );
+    }
+}
+
+#[test]
+fn text_eval_reports_success_and_empty_filtered_details() {
+    let temp = tempfile::tempdir().expect("temp directory should be created");
+    let data_dir = temp.path().join("data");
+    let schema = write_schema(temp.path());
+    initialize(&data_dir, &schema, "matrix-pass");
+    assert_success(&run(
+        &data_dir,
+        &[
+            "set",
+            "--session",
+            "matrix-pass",
+            "--bit",
+            "승인,auth,permission",
+            "--value",
+            "true,true,true",
+        ],
+    ));
+
+    let output = run(
+        &data_dir,
+        &[
+            "eval",
+            "--session",
+            "matrix-pass",
+            "--mask",
+            "required",
+            "--format",
+            "text",
+            "--show",
+            "missing",
+        ],
+    );
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("RESULT: O\n"));
+    assert!(stdout.ends_with("\nDETAILS (missing)\n  (none)\n"));
+}
+
+#[test]
+fn show_filter_requires_text_format() {
+    let temp = tempfile::tempdir().expect("temp directory should be created");
+    let data_dir = temp.path().join("data");
+    let schema = write_schema(temp.path());
+    initialize(&data_dir, &schema, "invalid-show");
+
+    let output = run(
+        &data_dir,
+        &[
+            "eval",
+            "--session",
+            "invalid-show",
+            "--mask",
+            "required",
+            "--show",
+            "all",
+        ],
+    );
+    assert_failure(&output);
+    assert!(output.stdout.is_empty());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("--show can only be used with --format text")
+    );
+}
+
+#[test]
 fn rejects_path_escape_ids_without_touching_outside_state() {
     let temp = tempfile::tempdir().expect("temp directory should be created");
     let data_dir = temp.path().join("data");

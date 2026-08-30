@@ -1,6 +1,6 @@
 # Bit Context Codex skill
 
-This directory is an installable Codex skill for deterministic evaluation of boolean conditions that were already verified outside `bitctx`.
+This directory is an installable Codex skill for deterministic evaluation of boolean conditions that were already verified outside `bitctx`. It can also resume long-running work from stable checkpoints without replaying completed procedures.
 
 [한국어 안내](README.ko.md)
 
@@ -38,6 +38,22 @@ bitctx eval --session "$SESSION_ID" --mask required --format json
 ```
 
 Only set values backed by real evidence. A passing result means only that the stored values satisfy the selected mask; it is not external authorization.
+
+## Resume without replay
+
+Reuse the same explicit session when a task continues. Evaluate the target mask first, treat unchanged true bits as settled checkpoints, and work only on missing or newly invalidated conditions:
+
+```bash
+bitctx eval --session "$SESSION_ID" --mask required --format json
+
+# A new observation invalidated one previous checkpoint.
+bitctx set --session "$SESSION_ID" --bit quota_ok --value false
+bitctx eval --session "$SESSION_ID" --mask required --format json
+```
+
+Do not encode the whole conversation as bits. Keep source material and nuanced reasoning outside `bitctx`; use bits only for stable, decision-relevant checkpoints. On continuation, report newly checked or changed conditions and the ordered `missing_conditions` instead of recapping completed work.
+
+Always inspect the JSON `pass` field. A successful `eval` process exit means that evaluation ran, not that the selected mask passed.
 
 ## Compatibility wrapper
 

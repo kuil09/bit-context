@@ -5,21 +5,21 @@ class Bitctx < Formula
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/kuil09/bit-context/releases/download/v0.2.0/bitctx-aarch64-macos"
-      sha256 "e7d0415d23f699f6d284d3a38f0a0619f839f5c5cdc73776bbee3dda93c99a38"
+      url "https://github.com/kuil09/bit-context/releases/download/v0.2.1/bitctx-aarch64-macos"
+      sha256 "23574723bd5c0c45002fb4a36c6f95b92f38b58030587679f6dc581fb8ce5d59"
     else
-      url "https://github.com/kuil09/bit-context/releases/download/v0.2.0/bitctx-x86_64-macos"
-      sha256 "d1f349dd7979bd12c5cbbb04a6841f57e9005bd44b3853317d1d2ff625f325e1"
+      url "https://github.com/kuil09/bit-context/releases/download/v0.2.1/bitctx-x86_64-macos"
+      sha256 "b0a1567e02f4f5d26f40f8345b29de1ff3e221203bd87f1a800501ccf9e1099a"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/kuil09/bit-context/releases/download/v0.2.0/bitctx-aarch64-linux"
-      sha256 "00e8eabd2dcf8cb98cb7d41d48a453e9f3a152a7864196ba4a57a6fdac3c636f"
+      url "https://github.com/kuil09/bit-context/releases/download/v0.2.1/bitctx-aarch64-linux"
+      sha256 "f0144e5ec4341a449ebf6f3e8cf198d857b00f6eed34e411791c966256e7b55d"
     else
-      url "https://github.com/kuil09/bit-context/releases/download/v0.2.0/bitctx-x86_64-linux"
-      sha256 "b9883a180df655b9585bfa93e8f1056500449e4f8c4ae1a7ee4fac178e1aaec1"
+      url "https://github.com/kuil09/bit-context/releases/download/v0.2.1/bitctx-x86_64-linux"
+      sha256 "3ac001dd46c278e81984431442a846f5bf830991cfb2773979cf65a4a07c9005"
     end
   end
 

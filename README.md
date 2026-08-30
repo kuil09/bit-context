@@ -12,7 +12,7 @@ State is stored as plaintext JSON. Do not put secrets in session IDs, bit names,
 
 ## Install
 
-Supported release platforms are Linux and macOS on x86-64 and ARM64. Windows is not supported in v0.2.0.
+Supported release platforms are Linux and macOS on x86-64 and ARM64. Windows is not supported in the v0.2 release series.
 
 Install the latest signed-by-checksum release asset:
 

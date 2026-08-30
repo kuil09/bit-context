@@ -134,7 +134,7 @@ Valid v0.1 `schema.json` and `session.json` files remain readable and retain the
 
 The release includes `bit-context-skill.zip`, containing `skills/bit-context/SKILL.md`, `agents/openai.yaml`, the compatibility wrapper, and an example schema. Extract the `bit-context` directory into your Codex skills directory, then restart or refresh skill discovery.
 
-The skill checks that `bitctx` is installed but never installs it automatically. It only sets condition values backed by observed evidence and never treats a passing mask as external authorization.
+The skill checks that `bitctx` is installed but never installs it automatically. It only sets condition values backed by observed evidence and never treats a passing mask as external authorization. When a known task continues, it evaluates the existing session first, treats unchanged true bits as settled checkpoints, and reports only new work, changed bits, and remaining conditions.
 
 The wrapper is optional:
 

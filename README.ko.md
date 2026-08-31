@@ -12,7 +12,7 @@
 
 ## 설치
 
-릴리스 지원 플랫폼은 x86-64와 ARM64 기반 Linux 및 macOS입니다. v0.2 릴리스 계열은 Windows를 지원하지 않습니다.
+릴리스 지원 플랫폼은 x86-64와 ARM64 기반 Linux 및 macOS입니다. Windows는 현재 지원하지 않습니다.
 
 최신 릴리스 자산을 필수 체크섬 검증과 함께 설치합니다.
 
@@ -54,7 +54,7 @@ install target/release/bitctx /usr/local/bin/bitctx
 ```bash
 bitctx init --session deploy-123 --schema schema.json
 
-# 새 v0.2 세션은 모든 비트가 0이며 즉시 평가할 수 있습니다.
+# 새 세션은 모든 비트가 0이며 즉시 평가할 수 있습니다.
 bitctx eval --session deploy-123 --mask required --format json
 
 # 실제 검사에서 얻은 값만 설정합니다.

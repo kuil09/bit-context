@@ -61,6 +61,8 @@ def validate_body(body: str) -> None:
         "external authorization",
         "plaintext JSON",
         "--session",
+        "bitctx resume",
+        'freshness: "unverified"',
     )
     for phrase in required_phrases:
         if phrase not in body:

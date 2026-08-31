@@ -35,6 +35,7 @@ bitctx set --session "$SESSION_ID" \
   --bit user_authenticated,has_permission \
   --value true,true
 bitctx eval --session "$SESSION_ID" --mask required --format json
+bitctx resume --session "$SESSION_ID" --format json
 ```
 
 실제 근거가 있는 값만 설정하십시오. 통과 결과는 저장된 값이 선택한 마스크를 충족한다는 뜻뿐이며 외부 권한 승인이 아닙니다.
@@ -53,7 +54,15 @@ bitctx eval --session "$SESSION_ID" --mask required --format json
 
 대화 전체를 비트로 인코딩하지 마십시오. 원문과 섬세한 추론은 `bitctx` 밖에 두고, 비트는 안정적이고 판단에 필요한 체크포인트에만 사용합니다. 재개할 때는 완료된 작업을 다시 요약하지 말고, 이번에 확인하거나 변경한 조건과 순서가 보존된 `missing_conditions`만 보고합니다.
 
-항상 JSON의 `pass` 필드를 확인하십시오. `eval` 프로세스의 성공 종료는 평가가 실행됐다는 뜻이지 선택한 마스크가 통과했다는 뜻이 아닙니다.
+새 대화·에이전트·fresh context에서는 알려진 세션 ID로 과거 대화를 재생하지 않고 저장된 판단 상태를 복원할 수 있습니다.
+
+```bash
+bitctx resume --session "$SESSION_ID" --format json
+```
+
+`resume`은 `default_mask`를 사용하고, 없으면 스키마의 유일한 마스크를 선택합니다. 기본값 없이 마스크가 여러 개면 `--mask`를 명시해야 합니다. `freshness` 필드는 항상 `unverified`입니다. 저장된 체크포인트를 복원할 뿐 외부 근거가 여전히 최신임을 증명하지는 않습니다.
+
+항상 JSON의 `pass` 필드를 확인하십시오. `eval` 또는 `resume` 프로세스의 성공 종료는 평가가 실행됐다는 뜻이지 선택한 마스크가 통과했다는 뜻이 아닙니다.
 
 사람이 빠르게 상태를 볼 때는 `--format text`를 사용합니다. bit 0부터 63까지 항상 8×8 행렬로 표시하며 `O`는 충족, `X`는 미충족, `·`는 선택한 마스크 밖을 뜻합니다. `X`가 검증된 거짓을 의미하지는 않습니다. `--show all`, `--show satisfied`, `--show missing`으로 상세 목록을 순서대로 볼 수 있습니다.
 
@@ -65,6 +74,7 @@ bitctx eval --session "$SESSION_ID" --mask required --format json
 export BITCTX_SESSION=task-123
 ./bitctx_skill.sh init example_schema.json
 ./bitctx_skill.sh eval required json
+./bitctx_skill.sh resume
 ./bitctx_skill.sh eval required text missing
 ./bitctx_skill.sh init example_schema.json --force
 ./bitctx_skill.sh reset --force

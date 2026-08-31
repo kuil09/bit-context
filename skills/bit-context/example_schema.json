@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "default_mask": "required",
   "bits": {
     "0": {"name": "user_authenticated", "desc": "사용자 인증 완료"},
     "1": {"name": "has_permission", "desc": "필요 권한 보유"},

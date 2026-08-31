@@ -7,6 +7,8 @@ use thiserror::Error;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Schema {
     pub version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_mask: Option<String>,
     #[serde(deserialize_with = "deserialize_bits")]
     pub bits: BTreeMap<u8, BitDef>,
     #[serde(deserialize_with = "deserialize_masks")]
@@ -56,6 +58,8 @@ pub enum SchemaError {
     DuplicateBitInMask(String, u8),
     #[error("mask '{0}' is empty")]
     EmptyMask(String),
+    #[error("default mask '{0}' not found in schema")]
+    DefaultMaskNotFound(String),
     #[error("bit '{0}' not found in schema")]
     BitNotFound(String),
     #[error("mask '{0}' not found in schema")]
@@ -107,6 +111,12 @@ impl Schema {
                     return Err(SchemaError::DuplicateBitInMask(mask_name.clone(), index));
                 }
             }
+        }
+
+        if let Some(default_mask) = &self.default_mask
+            && !self.masks.contains_key(default_mask)
+        {
+            return Err(SchemaError::DefaultMaskNotFound(default_mask.clone()));
         }
 
         Ok(())
@@ -222,6 +232,7 @@ mod tests {
     fn test_schema() -> Schema {
         Schema {
             version: 1,
+            default_mask: Some("required".into()),
             bits: BTreeMap::from([
                 (
                     0,
@@ -312,5 +323,16 @@ mod tests {
 
         let error = serde_json::from_str::<Schema>(input).expect_err("duplicate mask must fail");
         assert!(error.to_string().contains("duplicate mask name: 'm'"));
+    }
+
+    #[test]
+    fn rejects_unknown_default_mask() {
+        let mut schema = test_schema();
+        schema.default_mask = Some("unknown".into());
+
+        assert!(matches!(
+            schema.validate(),
+            Err(SchemaError::DefaultMaskNotFound(name)) if name == "unknown"
+        ));
     }
 }

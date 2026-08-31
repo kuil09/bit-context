@@ -49,11 +49,10 @@ pub struct EvalResult {
     pub missing_conditions: Vec<MissingCondition>,
 }
 
-pub fn run(store: &Store, args: EvalArgs) -> Result<()> {
-    let (schema, session) = store.read_session(&args.session)?;
-    let missing_conditions = schema.missing_conditions(&args.mask, session.bits)?;
+pub fn evaluate(schema: &Schema, mask: &str, current_bits: u64) -> Result<EvalResult> {
+    let missing_conditions = schema.missing_conditions(mask, current_bits)?;
 
-    let result = EvalResult {
+    Ok(EvalResult {
         pass: missing_conditions.is_empty(),
         missing: missing_conditions
             .iter()
@@ -64,7 +63,12 @@ pub fn run(store: &Store, args: EvalArgs) -> Result<()> {
             .map(|condition| condition.name.clone())
             .collect(),
         missing_conditions,
-    };
+    })
+}
+
+pub fn run(store: &Store, args: EvalArgs) -> Result<()> {
+    let (schema, session) = store.read_session(&args.session)?;
+    let result = evaluate(&schema, &args.mask, session.bits)?;
 
     match args.format.as_str() {
         "json" => {

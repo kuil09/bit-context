@@ -19,6 +19,7 @@ Commands:
   set <bit> <value>                  Set one bit
   set-multi <bits_csv> <values_csv>  Set multiple bits atomically
   eval <mask> [json|text] [show]     Evaluate a mask; show is all|satisfied|missing
+  resume [mask] [json|text]          Resume from missing conditions; mask may be inferred
   explain <mask> [ko|en]             Explain missing conditions
   dump [json|text]                   Dump the complete session state
   reset [--force]                    Delete the session
@@ -73,6 +74,18 @@ cmd_eval() {
     fi
 }
 
+cmd_resume() {
+    [[ $# -le 2 ]] || fail_usage "Usage: bitctx_skill.sh resume [mask] [json|text]"
+    if [[ $# -eq 0 ]]; then
+        "$BITCTX_BIN" resume --session "$BITCTX_SESSION" --format json
+    elif [[ $# -eq 1 ]]; then
+        "$BITCTX_BIN" resume --session "$BITCTX_SESSION" --mask "$1" --format json
+    else
+        [[ "$2" == "json" || "$2" == "text" ]] || fail_usage "resume format must be json or text"
+        "$BITCTX_BIN" resume --session "$BITCTX_SESSION" --mask "$1" --format "$2"
+    fi
+}
+
 cmd_explain() {
     [[ $# -ge 1 && $# -le 2 ]] || fail_usage "Usage: bitctx_skill.sh explain <mask> [ko|en]"
     "$BITCTX_BIN" explain --session "$BITCTX_SESSION" --mask "$1" --lang "${2:-ko}"
@@ -104,7 +117,7 @@ main() {
             usage
             return
             ;;
-        init | set | set-multi | eval | explain | dump | reset)
+        init | set | set-multi | eval | resume | explain | dump | reset)
             require_runtime
             ;;
         *)
@@ -117,6 +130,7 @@ main() {
         set) cmd_set "$@" ;;
         set-multi) cmd_set_multi "$@" ;;
         eval) cmd_eval "$@" ;;
+        resume) cmd_resume "$@" ;;
         explain) cmd_explain "$@" ;;
         dump) cmd_dump "$@" ;;
         reset) cmd_reset "$@" ;;

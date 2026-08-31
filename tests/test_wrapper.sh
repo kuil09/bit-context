@@ -56,6 +56,15 @@ assert_args $'eval\n--session\nsession-1\n--mask\nrequired\n--format\ntext'
 BITCTX_BIN="$FAKE_BIN" BITCTX_SESSION=session-1 "$WRAPPER" eval required text missing
 assert_args $'eval\n--session\nsession-1\n--mask\nrequired\n--format\ntext\n--show\nmissing'
 
+BITCTX_BIN="$FAKE_BIN" BITCTX_SESSION=session-1 "$WRAPPER" resume
+assert_args $'resume\n--session\nsession-1\n--format\njson'
+
+BITCTX_BIN="$FAKE_BIN" BITCTX_SESSION=session-1 "$WRAPPER" resume required
+assert_args $'resume\n--session\nsession-1\n--mask\nrequired\n--format\njson'
+
+BITCTX_BIN="$FAKE_BIN" BITCTX_SESSION=session-1 "$WRAPPER" resume required text
+assert_args $'resume\n--session\nsession-1\n--mask\nrequired\n--format\ntext'
+
 BITCTX_BIN="$FAKE_BIN" BITCTX_SESSION=session-1 "$WRAPPER" explain required en
 assert_args $'explain\n--session\nsession-1\n--mask\nrequired\n--lang\nen'
 

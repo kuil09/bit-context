@@ -25,6 +25,7 @@ SESSION="release-smoke"
 cat >"$SCHEMA" <<'EOF'
 {
   "version": 1,
+  "default_mask": "required",
   "bits": {
     "0": {"name": "auth", "desc": "Authentication verified"},
     "1": {"name": "permission", "desc": "Permission verified"},
@@ -41,6 +42,9 @@ EOF
 
 INITIAL="$("$BITCTX" --data-dir "$DATA_DIR" eval --session "$SESSION" --mask required --format json)"
 python3 -c 'import json,sys; value=json.loads(sys.argv[1]); assert value["pass"] is False; assert value["missing"] == [2,0,1]' "$INITIAL"
+
+RESUMED="$("$BITCTX" --data-dir "$DATA_DIR" resume --session "$SESSION" --format json)"
+python3 -c 'import json,sys; value=json.loads(sys.argv[1]); assert value["mask"] == "required"; assert value["pass"] is False; assert value["missing"] == [2,0,1]; assert value["freshness"] == "unverified"' "$RESUMED"
 
 TEXT_OUTPUT="$("$BITCTX" --data-dir "$DATA_DIR" eval --session "$SESSION" --mask required --format text --show missing)"
 grep -q '^RESULT: X$' <<<"$TEXT_OUTPUT"

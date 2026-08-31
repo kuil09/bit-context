@@ -2,7 +2,7 @@
 id: goal-bitctx-cli
 type: goal-and-requirements
 status: implemented
-title: "bitctx v0.2: Deterministic Boolean Context Store"
+title: "bitctx v0.3: Deterministic Boolean Context Store"
 tags: [cli, rust, bitwise, context, codex-skill]
 ---
 
@@ -48,6 +48,69 @@ In text evaluation, bit 0 is the top-left matrix cell and bit 63 is the bottom-r
 
 Session IDs match `[A-Za-z0-9][A-Za-z0-9._-]{0,127}` and must be one normal path component.
 
+## Explain contract
+
+```text
+bitctx [--data-dir PATH] explain --session ID --mask NAME [--lang ko|en]
+```
+
+- Read-only; takes a shared session lock.
+- Prints a human-readable list of missing conditions for the selected mask only.
+- No JSON output; output is Korean (default) or English per `--lang`.
+- If the mask passes, prints a single "all satisfied" line.
+- If the mask fails, prints the mask description followed by each missing condition as "- <name>: <description>" in mask definition order.
+- Unknown session, mask, or schema hash mismatch fails without creating or mutating state.
+
+## Dump contract
+
+```text
+bitctx [--data-dir PATH] dump --session ID [--format json|text]
+```
+
+- Read-only; takes a shared session lock.
+- JSON output structure:
+  ```json
+  {
+    "session_id": "...",
+    "schema_hash": "...",
+    "bits": 0,
+    "bit_states": [
+      {"index": 0, "name": "...", "value": false, "desc": "..."}
+    ],
+    "created_at": "...",
+    "updated_at": "..."
+  }
+  ```
+  - `bits` is the raw u64 bitfield.
+  - `bit_states` lists all defined bits in index order with current boolean value.
+- Text output prints the same fields plus a visual `●`/`○` status column for each bit.
+- Unknown session or schema hash mismatch fails without creating or mutating state.
+
+## Skill package contract
+
+The release includes `bit-context-skill.zip` containing the independently installable skill directory:
+
+```
+bit-context/
+├── SKILL.md
+├── agents/openai.yaml
+├── bitctx_skill.sh
+├── example_schema.json
+├── README.md
+└── README.ko.md
+```
+
+- `SKILL.md` — frontmatter `name: bit-context` with validated description; body covers preconditions, safety boundary, resume-first workflow, cross-session resume, initialize-once, changes/invalidation, result handling, error handling.
+- `agents/openai.yaml` — Codex metadata: `display_name: "Bit Context"`, `short_description` (25–64 chars), `default_prompt` referencing `$bit-context`, `allow_implicit_invocation: true`.
+- `bitctx_skill.sh` — compatibility wrapper requiring `BITCTX_SESSION`; subcommands `init`, `set`, `set-multi`, `eval`, `resume`, `explain`, `dump`, `reset`; validates binary existence, session presence, argument counts.
+- `example_schema.json` — valid v1 schema with `default_mask`, 5 bits, 3 masks; used in skill documentation.
+- READMEs — installation and usage in English and Korean.
+
+## Benchmark contracts
+
+- `bench_perf.sh` — measures local CLI process startup, locking, read, and JSON evaluation latency over N iterations (default 100). Reports mean microseconds per call. Includes an illustrative (non-measured) LLM comparison with explicit assumptions. Runs against an isolated temporary data directory.
+- `bench_harness.sh` — prints a design comparison between a natural-language LLM gate and a bitctx boolean gate. All token counts, latencies, and cost figures are illustrative assumptions, not measurements.
+
 ## Storage contract
 
 ```text
@@ -80,7 +143,7 @@ Session IDs match `[A-Za-z0-9][A-Za-z0-9._-]{0,127}` and must be one normal path
 
 - Rust edition 2024 with MSRV 1.85.
 - Release support is Linux and macOS on x86-64 and ARM64.
-- Windows, daemon mode, network synchronization, schema migration, arbitrary bit width, and automatic evidence collection are out of scope for v0.2.
+- Windows, daemon mode, network synchronization, schema migration, arbitrary bit width, and automatic evidence collection are out of scope for v0.3.
 - The Codex skill checks for `bitctx` but does not install it automatically.
 - The wrapper requires `BITCTX_SESSION` and has no shared default session.
 

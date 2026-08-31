@@ -22,7 +22,7 @@ case "$OS-$ARCH" in
     darwin-arm64 | darwin-aarch64) ASSET="bitctx-aarch64-macos" ;;
     *)
         echo "Unsupported platform: $OS-$ARCH" >&2
-        echo "bitctx v0.2 supports Linux and macOS on x86-64 and ARM64" >&2
+        echo "bitctx supports Linux and macOS on x86-64 and ARM64" >&2
         exit 1
         ;;
 esac

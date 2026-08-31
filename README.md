@@ -12,7 +12,7 @@ State is stored as plaintext JSON. Do not put secrets in session IDs, bit names,
 
 ## Install
 
-Supported release platforms are Linux and macOS on x86-64 and ARM64. Windows is not supported in the v0.2 release series.
+Supported release platforms are Linux and macOS on x86-64 and ARM64. Windows is not currently supported.
 
 Install the latest signed-by-checksum release asset:
 
@@ -54,7 +54,7 @@ Initialize and evaluate an explicit session:
 ```bash
 bitctx init --session deploy-123 --schema schema.json
 
-# A new v0.2 session is immediately evaluable and starts with all bits at zero.
+# A new session is immediately evaluable and starts with all bits at zero.
 bitctx eval --session deploy-123 --mask required --format json
 
 # Set only values obtained from real checks.

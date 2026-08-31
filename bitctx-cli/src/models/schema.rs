@@ -113,10 +113,10 @@ impl Schema {
             }
         }
 
-        if let Some(default_mask) = &self.default_mask
-            && !self.masks.contains_key(default_mask)
-        {
-            return Err(SchemaError::DefaultMaskNotFound(default_mask.clone()));
+        if let Some(default_mask) = &self.default_mask {
+            if !self.masks.contains_key(default_mask) {
+                return Err(SchemaError::DefaultMaskNotFound(default_mask.clone()));
+            }
         }
 
         Ok(())

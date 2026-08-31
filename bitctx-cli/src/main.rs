@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use commands::{dump, eval, explain, init, reset, set};
+use commands::{dump, eval, explain, init, reset, resume, set};
 use std::path::PathBuf;
 use storage::Store;
 
@@ -35,6 +35,8 @@ enum Commands {
     Set(set::SetArgs),
     /// Evaluate a named mask.
     Eval(eval::EvalArgs),
+    /// Resume decision state without replaying completed work.
+    Resume(resume::ResumeArgs),
     /// Explain missing conditions.
     Explain(explain::ExplainArgs),
     /// Dump the complete session state.
@@ -51,6 +53,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Init(args) => init::run(&store, args),
         Commands::Set(args) => set::run(&store, args),
         Commands::Eval(args) => eval::run(&store, args),
+        Commands::Resume(args) => resume::run(&store, args),
         Commands::Explain(args) => explain::run(&store, args),
         Commands::Dump(args) => dump::run(&store, args),
         Commands::Reset(args) => reset::run(&store, args),

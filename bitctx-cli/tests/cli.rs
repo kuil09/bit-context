@@ -55,6 +55,32 @@ fn write_schema(directory: &Path) -> PathBuf {
     path
 }
 
+fn write_multi_mask_schema(directory: &Path, default_mask: Option<&str>) -> PathBuf {
+    let path = directory.join("multi-schema.json");
+    let default_mask = default_mask
+        .map(|name| format!("  \"default_mask\": \"{name}\",\n"))
+        .unwrap_or_default();
+    fs::write(
+        &path,
+        format!(
+            r#"{{
+  "version": 1,
+{default_mask}  "bits": {{
+    "0": {{"name": "auth", "desc": "User is authenticated"}},
+    "1": {{"name": "permission", "desc": "Permission is verified"}}
+  }},
+  "masks": {{
+    "complete": {{"bits": [0, 1], "desc": "Complete conditions"}},
+    "required": {{"bits": [1], "desc": "Required conditions"}}
+  }}
+}}
+"#
+        ),
+    )
+    .expect("multi-mask schema should be written");
+    path
+}
+
 fn initialize(data_dir: &Path, schema_path: &Path, session: &str) {
     let output = run(
         data_dir,
@@ -154,6 +180,144 @@ fn full_flow_starts_false_and_ends_true() {
     assert_success(&reset);
     assert!(!data_dir.join("flow").exists());
     assert!(data_dir.join(".locks/flow.lock").exists());
+}
+
+#[test]
+fn resume_restores_missing_state_without_replaying_settled_bits() {
+    let temp = tempfile::tempdir().expect("temp directory should be created");
+    let data_dir = temp.path().join("data");
+    let schema = write_schema(temp.path());
+    initialize(&data_dir, &schema, "resume-flow");
+    assert_success(&run(
+        &data_dir,
+        &[
+            "set",
+            "--session",
+            "resume-flow",
+            "--bit",
+            "auth",
+            "--value",
+            "true",
+        ],
+    ));
+
+    let output = run(&data_dir, &["resume", "--session", "resume-flow"]);
+    assert_success(&output);
+    let result: Value = serde_json::from_slice(&output.stdout).expect("valid JSON output");
+    assert_eq!(result["session_id"], "resume-flow");
+    assert_eq!(result["mask"], "required");
+    assert_eq!(result["pass"], false);
+    assert_eq!(result["missing"], serde_json::json!([3, 1]));
+    assert_eq!(
+        result["missing_labels"],
+        serde_json::json!(["승인", "permission"])
+    );
+    assert_eq!(result["freshness"], "unverified");
+    assert!(result.get("bit_states").is_none());
+
+    let text = run(
+        &data_dir,
+        &["resume", "--session", "resume-flow", "--format", "text"],
+    );
+    assert_success(&text);
+    let stdout = String::from_utf8_lossy(&text.stdout);
+    assert!(stdout.contains("Session: resume-flow\n"));
+    assert!(stdout.contains("Mask: required\n"));
+    assert!(stdout.contains("Freshness: unverified\n"));
+    assert!(stdout.contains("RESULT: X\n"));
+    assert!(stdout.contains("X bit 3: 승인 (한국어 설명)\n"));
+    assert!(!stdout.contains("auth (User is authenticated)"));
+}
+
+#[test]
+fn resume_uses_default_mask_and_allows_explicit_override() {
+    let temp = tempfile::tempdir().expect("temp directory should be created");
+    let data_dir = temp.path().join("data");
+    let schema = write_multi_mask_schema(temp.path(), Some("required"));
+    initialize(&data_dir, &schema, "resume-default");
+
+    let default = run(&data_dir, &["resume", "--session", "resume-default"]);
+    assert_success(&default);
+    let result: Value = serde_json::from_slice(&default.stdout).expect("valid JSON output");
+    assert_eq!(result["mask"], "required");
+    assert_eq!(result["missing"], serde_json::json!([1]));
+
+    let explicit = run(
+        &data_dir,
+        &[
+            "resume",
+            "--session",
+            "resume-default",
+            "--mask",
+            "complete",
+        ],
+    );
+    assert_success(&explicit);
+    let result: Value = serde_json::from_slice(&explicit.stdout).expect("valid JSON output");
+    assert_eq!(result["mask"], "complete");
+    assert_eq!(result["missing"], serde_json::json!([0, 1]));
+}
+
+#[test]
+fn resume_rejects_ambiguous_or_invalid_default_masks() {
+    let temp = tempfile::tempdir().expect("temp directory should be created");
+    let data_dir = temp.path().join("data");
+    let ambiguous_schema = write_multi_mask_schema(temp.path(), None);
+    initialize(&data_dir, &ambiguous_schema, "resume-ambiguous");
+
+    let ambiguous = run(&data_dir, &["resume", "--session", "resume-ambiguous"]);
+    assert_failure(&ambiguous);
+    let stderr = String::from_utf8_lossy(&ambiguous.stderr);
+    assert!(stderr.contains("requires --mask"));
+    assert!(stderr.contains("complete, required"));
+
+    let unknown = run(
+        &data_dir,
+        &[
+            "resume",
+            "--session",
+            "resume-ambiguous",
+            "--mask",
+            "unknown",
+        ],
+    );
+    assert_failure(&unknown);
+    assert!(String::from_utf8_lossy(&unknown.stderr).contains("mask 'unknown' not found"));
+
+    let invalid_format = run(
+        &data_dir,
+        &[
+            "resume",
+            "--session",
+            "resume-ambiguous",
+            "--mask",
+            "required",
+            "--format",
+            "yaml",
+        ],
+    );
+    assert_failure(&invalid_format);
+    assert!(
+        String::from_utf8_lossy(&invalid_format.stderr)
+            .contains("unknown format 'yaml': use json or text")
+    );
+
+    let invalid_schema = write_multi_mask_schema(temp.path(), Some("unknown"));
+    let invalid = run(
+        &data_dir,
+        &[
+            "init",
+            "--session",
+            "resume-invalid",
+            "--schema",
+            invalid_schema.to_str().expect("UTF-8 path"),
+        ],
+    );
+    assert_failure(&invalid);
+    assert!(
+        String::from_utf8_lossy(&invalid.stderr)
+            .contains("default mask 'unknown' not found in schema")
+    );
 }
 
 #[test]
@@ -617,7 +781,22 @@ fn v01_session_format_remains_readable() {
     fs::create_dir_all(&session_dir).expect("v0.1 session directory should be created");
     fs::write(
         session_dir.join("schema.json"),
-        include_str!("../../skills/bit-context/example_schema.json"),
+        r#"{
+  "version": 1,
+  "bits": {
+    "0": {"name": "user_authenticated", "desc": "사용자 인증 완료"},
+    "1": {"name": "has_permission", "desc": "필요 권한 보유"},
+    "2": {"name": "resource_exists", "desc": "대상 리소스 존재"},
+    "3": {"name": "quota_ok", "desc": "쿼터 초과 안 함"},
+    "4": {"name": "rate_limit_ok", "desc": "레이트리밋 여유"}
+  },
+  "masks": {
+    "required": {"bits": [0, 1, 3], "desc": "기본 실행 필수 조건"},
+    "admin_only": {"bits": [0, 1], "desc": "관리자 전용"},
+    "read_access": {"bits": [0, 2], "desc": "읽기 권한"}
+  }
+}
+"#,
     )
     .expect("v0.1 schema should be written");
     fs::write(

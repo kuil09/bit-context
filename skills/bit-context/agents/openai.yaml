@@ -1,6 +1,6 @@
 interface:
   display_name: "Bit Context"
   short_description: "Resume verified checkpoints without replaying work"
-  default_prompt: "Use $bit-context to resume stable checkpoints, process only missing or invalidated conditions, and report the delta."
+  default_prompt: "Use $bit-context to resume an existing session before replaying prior work, process only missing or invalidated conditions, and report the delta."
 policy:
   allow_implicit_invocation: true

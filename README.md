@@ -37,6 +37,7 @@ Create a schema:
 ```json
 {
   "version": 1,
+  "default_mask": "required",
   "bits": {
     "0": {"name": "user_authenticated", "desc": "Authentication was verified"},
     "1": {"name": "has_permission", "desc": "Required permission was verified"},
@@ -74,6 +75,31 @@ Failure output preserves mask definition order and contains both compatibility f
   "missing_conditions": [
     {"index": 2, "name": "quota_ok", "desc": "Quota check passed"}
   ]
+}
+```
+
+Resume stored decision state in another conversation or agent without replaying completed work:
+
+```bash
+bitctx resume --session deploy-123 --format json
+```
+
+`resume` uses the schema's optional `default_mask`, or automatically selects the only mask. If a schema has multiple masks and no default, pass `--mask`. Its output includes `freshness: "unverified"` because the stored checkpoint does not prove that external evidence is still current.
+Command success only means the state was read and evaluated; parse `pass` to decide whether the mask passed.
+
+```json
+{
+  "session_id": "deploy-123",
+  "schema_hash": "...",
+  "mask": "required",
+  "pass": false,
+  "missing": [2],
+  "missing_labels": ["quota_ok"],
+  "missing_conditions": [
+    {"index": 2, "name": "quota_ok", "desc": "Quota check passed"}
+  ],
+  "updated_at": "...",
+  "freshness": "unverified"
 }
 ```
 
@@ -116,6 +142,7 @@ Add `--show all`, `--show satisfied`, or `--show missing` to text output to list
 bitctx [--data-dir PATH] init    --session ID --schema FILE [--force]
 bitctx [--data-dir PATH] set     --session ID --bit NAMES --value VALUES
 bitctx [--data-dir PATH] eval    --session ID --mask NAME [--format json|text] [--show all|satisfied|missing]
+bitctx [--data-dir PATH] resume  --session ID [--mask NAME] [--format json|text]
 bitctx [--data-dir PATH] explain --session ID --mask NAME [--lang ko|en]
 bitctx [--data-dir PATH] dump    --session ID [--format json|text]
 bitctx [--data-dir PATH] reset   --session ID [--force]
@@ -143,7 +170,7 @@ The default layout is:
 ```
 
 - `init`, `set`, and `reset` take an exclusive per-session lock.
-- `eval`, `explain`, and `dump` take a shared per-session lock.
+- `eval`, `resume`, `explain`, and `dump` take a shared per-session lock.
 - Lock files live outside deletable session directories.
 - A small lock file may remain after `reset`; keeping its inode stable prevents lock-unlink races when another process still references the session ID.
 - State writes use a same-directory temporary file, flush and sync it, then rename it atomically.
@@ -151,7 +178,7 @@ The default layout is:
 - `set` fails when the session was not initialized.
 - `init --force` reinitializes the schema and zeroes every bit while holding the lock.
 
-Schema validation rejects duplicate JSON indices, duplicate bit names, invalid names, unknown mask references, empty masks, and duplicate bits within a mask. Descriptions may contain Unicode.
+Schema validation rejects duplicate JSON indices, duplicate bit names, invalid names, unknown mask references, an unknown `default_mask`, empty masks, and duplicate bits within a mask. Descriptions may contain Unicode.
 
 ## v0.2 migration
 
@@ -167,13 +194,14 @@ Valid v0.1 `schema.json` and `session.json` files remain readable and retain the
 
 The release includes `bit-context-skill.zip`, containing `skills/bit-context/SKILL.md`, `agents/openai.yaml`, the compatibility wrapper, and an example schema. Extract the `bit-context` directory into your Codex skills directory, then restart or refresh skill discovery.
 
-The skill checks that `bitctx` is installed but never installs it automatically. It only sets condition values backed by observed evidence and never treats a passing mask as external authorization. When a known task continues, it evaluates the existing session first, treats unchanged true bits as settled checkpoints, and reports only new work, changed bits, and remaining conditions.
+The skill checks that `bitctx` is installed but never installs it automatically. It only sets condition values backed by observed evidence and never treats a passing mask as external authorization. When a known task continues, it evaluates the existing session first, treats unchanged true bits as settled checkpoints, and reports only new work, changed bits, and remaining conditions. In a fresh context with a known session ID, it runs `resume` before asking for the transcript or reconstructing completed work.
 
 The wrapper is optional:
 
 ```bash
 export BITCTX_SESSION=deploy-123
 skills/bit-context/bitctx_skill.sh eval required json
+skills/bit-context/bitctx_skill.sh resume
 skills/bit-context/bitctx_skill.sh eval required text missing
 ```
 

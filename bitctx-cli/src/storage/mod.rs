@@ -323,6 +323,9 @@ fn canonical_schema_json(schema: &Schema) -> String {
 
     let mut root = Map::new();
     root.insert("version".into(), Value::Number(schema.version.into()));
+    if let Some(default_mask) = &schema.default_mask {
+        root.insert("default_mask".into(), Value::String(default_mask.clone()));
+    }
     root.insert("bits".into(), Value::Object(bits_map));
     root.insert("masks".into(), Value::Object(masks_map));
 
@@ -397,6 +400,7 @@ mod tests {
     fn test_schema() -> Schema {
         Schema {
             version: 1,
+            default_mask: None,
             bits: BTreeMap::from([
                 (
                     0,

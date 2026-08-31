@@ -40,6 +40,26 @@ When continuing or reviewing an existing task:
 5. Set only the changed, newly verified results, then evaluate the mask again.
 6. Report the delta: checks performed now, bits changed now, and conditions still missing. Do not recap settled checkpoints unless asked.
 
+## Cross-Session Resume
+
+When another conversation, agent, or fresh context receives a known session ID:
+
+1. Reuse the known data directory. Before asking for the previous transcript or reconstructing completed work, resume the stored decision state:
+
+   ```bash
+   bitctx resume --session "$SESSION_ID" --format json
+   ```
+
+2. Let `resume` use the schema's `default_mask` or its only mask. If multiple masks are ambiguous, use the task's known mask explicitly; never guess:
+
+   ```bash
+   bitctx resume --session "$SESSION_ID" --mask required --format json
+   ```
+
+3. Parse `pass`; command success only means the stored state was read and evaluated. Treat `missing_conditions` as the ordered continuation scope. Do not replay or narrate conditions omitted from that list unless the user requests an audit or new evidence affects them.
+4. Treat `freshness: "unverified"` literally. Resume restores stored decision state; it does not prove that external evidence is still current. Apply the Changes and Invalidation rules before relying on affected bits.
+5. If the expected session or task-to-session mapping is unavailable, stop instead of initializing a replacement.
+
 ## Initialize Once
 
 1. Define a schema that maps stable bit indices from 0 through 63 to unique condition names and defines named AND masks.

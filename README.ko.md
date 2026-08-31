@@ -37,6 +37,7 @@ install target/release/bitctx /usr/local/bin/bitctx
 ```json
 {
   "version": 1,
+  "default_mask": "required",
   "bits": {
     "0": {"name": "user_authenticated", "desc": "인증 확인 완료"},
     "1": {"name": "has_permission", "desc": "필수 권한 확인 완료"},
@@ -74,6 +75,31 @@ bitctx eval --session deploy-123 --mask required --format json
   "missing_conditions": [
     {"index": 2, "name": "quota_ok", "desc": "쿼터 확인 통과"}
   ]
+}
+```
+
+다른 대화나 에이전트에서 완료 절차를 다시 재생하지 않고 저장된 판단 상태를 복원합니다.
+
+```bash
+bitctx resume --session deploy-123 --format json
+```
+
+`resume`은 스키마의 선택형 `default_mask`를 사용하고, 없으면 유일한 마스크를 자동 선택합니다. 기본값 없이 마스크가 여러 개면 `--mask`를 명시해야 합니다. 저장된 체크포인트는 외부 근거가 여전히 최신임을 증명하지 않으므로 출력에는 `freshness: "unverified"`가 포함됩니다.
+명령 성공은 상태를 읽고 평가했다는 뜻일 뿐입니다. 마스크 통과 여부는 `pass`를 파싱해 판단해야 합니다.
+
+```json
+{
+  "session_id": "deploy-123",
+  "schema_hash": "...",
+  "mask": "required",
+  "pass": false,
+  "missing": [2],
+  "missing_labels": ["quota_ok"],
+  "missing_conditions": [
+    {"index": 2, "name": "quota_ok", "desc": "쿼터 확인 통과"}
+  ],
+  "updated_at": "...",
+  "freshness": "unverified"
 }
 ```
 
@@ -116,6 +142,7 @@ RESULT: X
 bitctx [--data-dir PATH] init    --session ID --schema FILE [--force]
 bitctx [--data-dir PATH] set     --session ID --bit NAMES --value VALUES
 bitctx [--data-dir PATH] eval    --session ID --mask NAME [--format json|text] [--show all|satisfied|missing]
+bitctx [--data-dir PATH] resume  --session ID [--mask NAME] [--format json|text]
 bitctx [--data-dir PATH] explain --session ID --mask NAME [--lang ko|en]
 bitctx [--data-dir PATH] dump    --session ID [--format json|text]
 bitctx [--data-dir PATH] reset   --session ID [--force]
@@ -143,7 +170,7 @@ bitctx [--data-dir PATH] reset   --session ID [--force]
 ```
 
 - `init`, `set`, `reset`은 세션별 배타 잠금을 사용합니다.
-- `eval`, `explain`, `dump`는 세션별 공유 잠금을 사용합니다.
+- `eval`, `resume`, `explain`, `dump`는 세션별 공유 잠금을 사용합니다.
 - 잠금 파일은 삭제 가능한 세션 디렉터리 밖에 있습니다.
 - 다른 프로세스가 같은 세션 ID를 참조할 때 잠금 inode가 바뀌는 경쟁을 막기 위해 `reset` 뒤에도 작은 잠금 파일이 남을 수 있습니다.
 - 상태 쓰기는 같은 디렉터리의 임시파일을 flush·sync한 뒤 원자적으로 rename합니다.
@@ -151,7 +178,7 @@ bitctx [--data-dir PATH] reset   --session ID [--force]
 - 초기화되지 않은 세션에서 `set`은 실패합니다.
 - `init --force`는 잠금을 유지한 채 스키마를 다시 저장하고 모든 비트를 0으로 초기화합니다.
 
-스키마 검증은 중복 JSON 인덱스, 중복 비트 이름, 잘못된 이름, 존재하지 않는 마스크 참조, 빈 마스크, 마스크 내부의 중복 비트를 거부합니다. 설명에는 Unicode를 사용할 수 있습니다.
+스키마 검증은 중복 JSON 인덱스, 중복 비트 이름, 잘못된 이름, 존재하지 않는 마스크 참조, 존재하지 않는 `default_mask`, 빈 마스크, 마스크 내부의 중복 비트를 거부합니다. 설명에는 Unicode를 사용할 수 있습니다.
 
 ## v0.2 마이그레이션
 
@@ -167,13 +194,14 @@ bitctx [--data-dir PATH] reset   --session ID [--force]
 
 릴리스의 `bit-context-skill.zip`에는 `skills/bit-context/SKILL.md`, `agents/openai.yaml`, 호환 래퍼, 예제 스키마가 들어 있습니다. `bit-context` 디렉터리를 Codex 스킬 디렉터리에 풀고 스킬 발견을 다시 실행하십시오.
 
-스킬은 `bitctx` 설치 여부를 확인하지만 자동 설치하지 않습니다. 관찰된 근거가 있는 조건값만 설정하며, 마스크 통과를 외부 권한 승인으로 해석하지 않습니다. 기존 작업이 이어질 때는 먼저 같은 세션을 평가하고, 변경되지 않은 true 비트를 완료된 체크포인트로 취급하며, 새 작업·변경된 비트·남은 조건만 보고합니다.
+스킬은 `bitctx` 설치 여부를 확인하지만 자동 설치하지 않습니다. 관찰된 근거가 있는 조건값만 설정하며, 마스크 통과를 외부 권한 승인으로 해석하지 않습니다. 기존 작업이 이어질 때는 먼저 같은 세션을 평가하고, 변경되지 않은 true 비트를 완료된 체크포인트로 취급하며, 새 작업·변경된 비트·남은 조건만 보고합니다. 새 컨텍스트에서 알려진 세션 ID를 받으면 과거 대화를 요청하거나 완료 작업을 재구성하기 전에 `resume`을 실행합니다.
 
 래퍼는 선택 사항입니다.
 
 ```bash
 export BITCTX_SESSION=deploy-123
 skills/bit-context/bitctx_skill.sh eval required json
+skills/bit-context/bitctx_skill.sh resume
 skills/bit-context/bitctx_skill.sh eval required text missing
 ```
 

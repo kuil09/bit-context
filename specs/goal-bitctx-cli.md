@@ -12,9 +12,10 @@ Provide a local CLI and Codex skill that can persist boolean results already ver
 
 ## Target constraints
 
-- `init`, `set`, `eval`, `explain`, `dump`, and `reset` operate through an explicit safe session ID.
+- `init`, `set`, `eval`, `resume`, `explain`, `dump`, and `reset` operate through an explicit safe session ID.
 - `init` creates a schema and zeroed state that is immediately evaluable.
 - A named mask returns an ordered pass/fail result and structured missing conditions.
+- `resume` restores the selected stored decision state without returning settled checkpoints as continuation work.
 - Text evaluation renders a fixed 8×8 matrix covering bit positions 0 through 63.
 - Text details can be filtered to all, satisfied, or missing conditions while preserving mask order.
 - Concurrent writers to one session do not lose successful updates.
@@ -35,6 +36,7 @@ Provide a local CLI and Codex skill that can persist boolean results already ver
 bitctx [--data-dir PATH] init    --session ID --schema FILE [--force]
 bitctx [--data-dir PATH] set     --session ID --bit NAMES --value VALUES
 bitctx [--data-dir PATH] eval    --session ID --mask NAME [--format json|text] [--show all|satisfied|missing]
+bitctx [--data-dir PATH] resume  --session ID [--mask NAME] [--format json|text]
 bitctx [--data-dir PATH] explain --session ID --mask NAME [--lang ko|en]
 bitctx [--data-dir PATH] dump    --session ID [--format json|text]
 bitctx [--data-dir PATH] reset   --session ID [--force]
@@ -70,6 +72,7 @@ Session IDs match `[A-Za-z0-9][A-Za-z0-9._-]{0,127}` and must be one normal path
 - Bit names are unique and non-empty and contain no comma, leading/trailing whitespace, or control character.
 - JSON bit indices, mask names, and mask bit entries cannot be duplicated.
 - Each mask is non-empty and references only defined bits.
+- An optional `default_mask` names an existing mask and is included in the schema hash.
 - Description strings accept Unicode.
 - Missing indices, names, and structured conditions preserve mask definition order.
 
